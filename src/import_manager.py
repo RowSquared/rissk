@@ -358,6 +358,7 @@ def get_questionaire(survey_path, survey_name, survey_version):
     qnr_df = pd.DataFrame()
     questionaire_path = os.path.join(survey_path, 'Questionnaire/content/document.json')
     if os.path.exists(questionaire_path):
+        # TODO encoding needed on some systems because otherwise a charmap error is thrown
         with open(questionaire_path, encoding='utf8') as file:
             json_data = json.load(file)
 
