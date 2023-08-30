@@ -326,31 +326,40 @@ class ItemFeatureProcessing(FeatureProcessing):
         return df
 
     def make_score__multi_option_question(self):
-        feature = 'f__multi_option_question'
-        filter_condition = (self.df_item['type'] == 'MultyOptionsQuestion')
-        data = self.df_item[filter_condition]
-        pivot_table = pd.DataFrame(data.responsible.unique(), columns=['responsible'])
-        for variable_name in data.variable_name.unique():
-            mask = (data['variable_name'] == variable_name) & (data['value'] != '##N/A##')
-            df_values = pd.get_dummies(data[mask]['value'].explode()).groupby(level=0).sum()
+        feature_name = 'f__multi_option_question'
+        # Answer single question is calculated at responsible level
 
-            # Joining back the exploded values to the original dataframe
-            df = data[mask][['responsible', 'value']].drop('value', axis=1).join(df_values)
+        score_name = self.rename_feature(feature_name)
 
-            # Function to calculate entropy
-            def calculate_entropy(row):
-                probabilities = row.mean() + 1e-10
-                entropy = -np.sum(probabilities * np.log2(probabilities))
-                return entropy
+        multi_question_mask = (self.df_item['type'] == 'MultyOptionsQuestion')
 
-            # # Calculating entropy grouped by 'variable_name' and 'responsible'
-            result = df.groupby(['responsible']).apply(calculate_entropy) / np.log2(df.shape[1] - 1)
-            result = result.reset_index()
-            result.columns = ['responsible', 'entropy']
-            pivot_table[variable_name + feature.replace('f__', '__')] = pivot_table['responsible'].map(
-                result.set_index('responsible')['entropy'])
+        df = self.df_item[multi_question_mask].copy()
+        # Select only those variables that have at least three distinct values and more than one hundred records
+        valid_variables = df.groupby('variable_name').filter(lambda x: len(x) >= 100)
+        # Get the unique variable names that meet the conditions
+        variables = valid_variables['variable_name'].unique()
 
-        return pivot_table
+        df[score_name] = 0
+        for var in variables:
+            mask = (df['variable_name'] == var)
+            unique_values = len([v for v in df[mask]['value'].explode().unique() if v != '##N/A##'])
+            entropy_df = df[mask].groupby('responsible')['value'].apply(calculate_list_entropy,
+                                                                        unique_values=unique_values,
+                                                                        min_record_sample=5).copy()
+            entropy_df = entropy_df.reset_index()
+            entropy_df = entropy_df[~pd.isnull(entropy_df['value'])]
+
+            if entropy_df.shape[0] > 0:
+                entropy_df.sort_values('value', inplace=True, ascending=False)
+
+                median_value = entropy_df['value'].median()
+
+                median_value = entropy_df['value'].median()
+                entropy_df[score_name] = entropy_df['value'].apply(
+                    lambda x: 1 if x < median_value - 50 / 100 * median_value else 0)
+                df.loc[mask, score_name] = df[mask]['responsible'].map(entropy_df.set_index('responsible')[score_name])
+
+        return df
 
     def make_score__first_digit(self):
         feature_name = 'f__numeric_response'
