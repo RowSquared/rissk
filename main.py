@@ -2,7 +2,7 @@ import os
 from omegaconf import DictConfig, OmegaConf
 from src.unit_proccessing import *
 import hydra
-#from memory_profiler import memory_usage
+from memory_profiler import memory_usage
 import warnings
 warnings.simplefilter(action='ignore', category=Warning)
 
@@ -22,9 +22,9 @@ def manage_survey_definition(config):
 
 
 def manage_export_path(config):
-    if config.export_path is not None:
-        config.data.externals = os.path.dirname(config.export_path)
-        config.surveys = [os.path.basename(config.export_path)]
+    if config['export_path'] is not None:
+        config['data']['externals'] = os.path.dirname(config['export_path'])
+        config['surveys'] = [os.path.basename(config['export_path'])]
     return config
 
 
@@ -43,6 +43,6 @@ def unit_risk_score(config: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    unit_risk_score()
-    #mem_usage = memory_usage(unit_risk_score)
-    #print(f"Memory usage (in MB): {max(mem_usage)}")
+    #unit_risk_score()
+    mem_usage = memory_usage(unit_risk_score)
+    print(f"Memory usage (in MB): {max(mem_usage)}")
