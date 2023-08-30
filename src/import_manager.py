@@ -358,7 +358,7 @@ def get_questionaire(survey_path, survey_name, survey_version):
     qnr_df = pd.DataFrame()
     questionaire_path = os.path.join(survey_path, 'Questionnaire/content/document.json')
     if os.path.exists(questionaire_path):
-        with open(questionaire_path) as file:
+        with open(questionaire_path, encoding='utf-8') as file:
             json_data = json.load(file)
 
         question_data = []
