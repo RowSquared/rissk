@@ -248,8 +248,8 @@ class UnitDataProcessing(ItemFeatureProcessing):
         # of the data point, as the outlier score for observations.
         model = LSCP(detector_list)
         scaler = StandardScaler()
-        df = windsorize_95_percentile(df)
-        df = pd.DataFrame(scaler.fit_transform(df), columns=df.columns)
+        df[feature_name] = windsorize_95_percentile(df[[feature_name]])
+        df[feature_name] = scaler.fit_transform(df[[feature_name]])
         model.fit(df[[feature_name]])
 
         self._df_unit.loc[duration_mask, score_name] = model.predict(df[[feature_name]])
@@ -292,7 +292,7 @@ class UnitDataProcessing(ItemFeatureProcessing):
 
     def make_score_unit__gps(self, feature_name):
         data = self.make_score__gps()
-        features = ['s__gps_proximity_counts', 's__gps_spatial_outlier']
+        features = ['s__gps_proximity_counts', 's__gps_spatial_outlier', 's__gps_spatial_extreme_outlier']
 
         data = data.groupby('interview__id')[features].sum()
         data = data.reset_index()
@@ -304,16 +304,17 @@ class UnitDataProcessing(ItemFeatureProcessing):
         self._df_unit['s__gps_spatial_outlier'] = self._df_unit['interview__id'].map(
             data.set_index('interview__id')['s__gps_spatial_outlier']
         )
+        self._df_unit['s__gps_spatial_extreme_outlier'] = self._df_unit['interview__id'].map(
+            data.set_index('interview__id')['s__gps_spatial_extreme_outlier']
+        )
 
         data = self.df_item.groupby('interview__id')[feature_name].sum()
-        data = data.reset_index()
         score_name = feature_name.replace('f__', 's__')
-        self._df_unit[score_name] = self._df_unit['interview__id'].map(
-            data.set_index('interview__id')[feature_name]
-        )
+        self._df_unit[score_name] = self._df_unit['interview__id'].map(data)
 
         self._df_unit['s__gps_proximity_counts'].fillna(0, inplace=True)
         self._df_unit['s__gps_spatial_outlier'].fillna(0, inplace=True)
+        self._df_unit['s__gps_spatial_extreme_outlier'].fillna(0, inplace=True)
 
     # def make_feature_unit__comments(self):
     #     columns_to_check = ['f__comments_set', 'f__comment_length']

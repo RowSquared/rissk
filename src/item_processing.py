@@ -5,6 +5,7 @@ from scipy.spatial import cKDTree
 from sklearn.cluster import DBSCAN
 from pyod.models.ecod import ECOD
 from pyod.models.cof import COF
+from pyod.models.lof import LOF
 from pyod.models.inne import INNE
 from scipy import stats
 from sklearn.preprocessing import StandardScaler
@@ -81,6 +82,10 @@ class ItemFeatureProcessing(FeatureProcessing):
 
         data.columns = replace_with_feature_name(list(data.columns), feature_name)
         data = data.reset_index()
+        # Everything that has 0,0 as coordinates is an outlier
+        data['s__gps_spatial_extreme_outlier'] = data['f__gps_latitude'].apply(lambda x: 1 if x == 0.000000 else 0)
+        data['s__gps_spatial_extreme_outlier'] = data['f__gps_longitude'].apply(lambda x: 1 if x == 0.000000 else 0)
+
 
         # Convert lat, lon to 3D cartesian coordinates
         data['x'], data['y'], data['z'] = lat_lon_to_cartesian(data['f__gps_latitude'],
@@ -100,22 +105,51 @@ class ItemFeatureProcessing(FeatureProcessing):
                   zip(data[['x', 'y', 'z']].values, data['accuracy'])]
 
         data['s__gps_proximity_counts'] = counts
-        coords_columns = ['f__gps_latitude', 'f__gps_longitude']
-        # Identify spatial outliers
-        # model = DBSCAN(eps=0.3, min_samples=5)  # tune these parameters for your data
-        # model.fit(data[coords_columns])
-        model = COF()
-        model.fit(data[coords_columns])
-        # -1 indicates noise in the DBSCAN algorithm
-        data['s__gps_spatial_outlier'] = model.predict(data[coords_columns])  # model.labels_
-        # data['s__spatial_outlier'] = data['s__spatial_outlier'].replace({1: 0, -1: 1})
+        coords_columns = ['x', 'y']
+        # Identify extreme spatial outliers
 
-        return data.drop(columns=['x', 'y', 'z', 'accuracy'])
+        mask = (data['s__gps_spatial_extreme_outlier'] < 1)
+
+        median_x = data[mask].drop_duplicates(subset='x')['x'].median()
+        median_y = data[mask].drop_duplicates(subset='y')['y'].median()
+        median_z = data[mask].drop_duplicates(subset='z')['z'].median()
+
+        # Calculate distances from the median point
+        data['distance_to_median'] = np.sqrt((data[mask]['x'] - median_x) ** 2 +
+                                             (data[mask]['y'] - median_y) ** 2 +
+                                             (data[mask]['z'] - median_z) ** 2
+                                             )
+
+        # Set a threshold (e.g., 95th percentile of distances)
+        threshold = data[mask]['distance_to_median'].quantile(0.95) + 50
+
+        # Everything that is above 50 + the median distance is an outlier
+        data.loc[mask, 's__gps_spatial_extreme_outlier'] = data[mask]['distance_to_median'] > threshold
+
+        # MAke a further cleaning with dbscan
+        coords_columns = ['x', 'y']
+        model = DBSCAN(eps=0.3, min_samples=5)  # tune these parameters for your data
+        model.fit(data[mask][coords_columns])
+        data.loc[mask, 'outlier'] = model.fit_predict(data[mask][coords_columns])
+        data['outlier'] = data.apply(
+            lambda row: 1 if row['outlier'] == -1 or row['s__gps_spatial_extreme_outlier'] == 1 else 0, 1)
+
+        # USE COF if dataset hase less than 20000 samples else use LOF
+        contamination = self.get_contamination_parameter('f__gps', method='medfilt', random_state=42)
+        if data[mask].shape[0] < 10000:
+            model = COF(contamination=contamination)
+        else:
+            model = LOF(contamination=contamination)
+        model.fit(data[coords_columns])
+        model.fit(data[mask][coords_columns])
+        data.loc[mask, 's__gps_spatial_outlier'] = model.predict(data[mask][coords_columns])
+
+        return data.drop(columns=['x', 'y', 'z', 'accuracy','distance_to_median', 'outlier'])
 
     def make_score__sequence_jump(self):
         feature_name = 'f__sequence_jump'
         score_name = self.rename_feature(feature_name)
-        df = self.df_item[~pd.isnull(self.df_item[feature_name])].copy()
+        df = self.df_item[~pd.isnull(self.df_item[feature_name])]#.copy()
         # Select only those variables that have at least three distinct values and more than one hundred records
         valid_variables = self.filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=3)
         df[score_name] = 0
@@ -130,7 +164,7 @@ class ItemFeatureProcessing(FeatureProcessing):
 
         feature_name = 'f__first_decimal'
         score_name = self.rename_feature(feature_name)
-        df = self.df_item[~pd.isnull(self.df_item[feature_name])].copy()
+        df = self.df_item[~pd.isnull(self.df_item[feature_name])]#.copy()
         # Select only those variables that have at least three distinct values and more than one hundred records
         valid_variables = self.filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=3)
         df[score_name] = 0
@@ -147,7 +181,7 @@ class ItemFeatureProcessing(FeatureProcessing):
         # ECOD is a parameter-free, highly interpretable outlier detection algorithm based on empirical CDF functions
         feature_name = 'f__answer_hour_set'
         score_name = self.rename_feature(feature_name)
-        df = self.df_item[~pd.isnull(self.df_item[feature_name])].copy()
+        df = self.df_item[~pd.isnull(self.df_item[feature_name])]#.copy()
 
         # Sorting the DataFrame based on the 'frequency' answer_hour_set in descending order
         sorted_hours = df[feature_name].value_counts().index
@@ -169,7 +203,7 @@ class ItemFeatureProcessing(FeatureProcessing):
     def make_score__answer_changed(self):
         feature_name = 'f__answer_changed'
         score_name = self.rename_feature(feature_name)
-        df = self.df_item[~pd.isnull(self.df_item[feature_name])].copy()
+        df = self.df_item[~pd.isnull(self.df_item[feature_name])]#.copy()
 
         # Select only those variables that have at least three distinct values and more than one hundred records
         valid_variables = self.filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=3)
@@ -205,7 +239,7 @@ class ItemFeatureProcessing(FeatureProcessing):
         feature_name = 'f__answer_position'
         score_name = self.rename_feature(feature_name)
 
-        df = self.df_item[~pd.isnull(self.df_item[feature_name])].copy()
+        df = self.df_item[~pd.isnull(self.df_item[feature_name])]#.copy()
         # Select only those variables that have at least three distinct values and more than one hundred records
         valid_variables = self.filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=3)
         df[score_name] = 0
@@ -232,7 +266,7 @@ class ItemFeatureProcessing(FeatureProcessing):
     def make_score__answer_selected(self):
         feature_name = 'f__answer_selected'
         score_name = self.rename_feature(feature_name)
-        df = self.df_item[~pd.isnull(self.df_item[feature_name])].copy()
+        df = self.df_item[~pd.isnull(self.df_item[feature_name])]#.copy()
         # Select only those variables that have at least three distinct values and more than one hundred records
         valid_variables = self.filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=3)
         df[score_name] = 0
@@ -260,7 +294,7 @@ class ItemFeatureProcessing(FeatureProcessing):
     def make_score__answer_duration(self):
         feature_name = 'f__answer_duration'
         score_name = self.rename_feature(feature_name)
-        df = self.df_item[~pd.isnull(self.df_item[feature_name])].copy()
+        df = self.df_item[~pd.isnull(self.df_item[feature_name])]#.copy()
         # Select only those variables that have at least three distinct values and more than one hundred records
         valid_variables = self.filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=3)
 
