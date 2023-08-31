@@ -358,11 +358,7 @@ def get_questionaire(survey_path, survey_name, survey_version):
     qnr_df = pd.DataFrame()
     questionaire_path = os.path.join(survey_path, 'Questionnaire/content/document.json')
     if os.path.exists(questionaire_path):
-<<<<<<<<< Temporary merge branch 1
         with open(questionaire_path, encoding='utf-8') as file:
-=========
-        with open(questionaire_path, encoding='utf8') as file:
->>>>>>>>> Temporary merge branch 2
             json_data = json.load(file)
 
         question_data = []
