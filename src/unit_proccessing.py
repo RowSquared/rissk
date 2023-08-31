@@ -73,7 +73,7 @@ class UnitDataProcessing(ItemFeatureProcessing):
         file_name = "_".join([self.config.surveys[0], self.config.survey_version[0], 'unit_risk_score']) + ".csv"
         output_path = self.config.output_file.split('.')[0] + '.csv'
         df.to_csv(output_path, index=False)
-        print(f'SUCCESS! you can find the unit_risk_score output file in {self.config.data.results}')
+        print(f'SUCCESS! you can find the unit_risk_score output file in {output_path}')
 
     def make_score_unit__numeric_response(self, feature_name):
         pass
@@ -93,13 +93,15 @@ class UnitDataProcessing(ItemFeatureProcessing):
         self._df_unit[score_name].fillna(0, inplace=True)
 
     def make_score_unit__multi_option_question(self, feature_name):
+        score_name = self.rename_feature(feature_name)
+        # multi_option_question is calculated at responsible level
         data = self.make_score__multi_option_question()
-        selected_columns = [col for col in data.columns if feature_name.replace('f__', '__') in col]
-        data['total'] = data[selected_columns].mean(1)
-        data['total'] = data.drop(columns=['responsible']).mean(1)
-        entropy_ = data.groupby('responsible')['total'].mean()
-
-        self._df_unit[feature_name.replace('f__', 's__')] = self._df_unit['responsible'].map(entropy_)
+        data = data.groupby(['responsible', 'variable_name']).agg({score_name: 'mean'})
+        data = data.reset_index()
+        data = data.groupby('responsible').agg({score_name: 'mean'})
+        self._df_unit[score_name] = self._df_unit['responsible'].map(data[score_name])
+        # Fill with 0's for missing values
+        self._df_unit[score_name].fillna(0, inplace=True)
 
     def make_score_unit__answer_hour_set(self, feature_name):
         data = self.make_score__answer_hour_set()
@@ -246,8 +248,8 @@ class UnitDataProcessing(ItemFeatureProcessing):
         # of the data point, as the outlier score for observations.
         model = LSCP(detector_list)
         scaler = StandardScaler()
-        df = windsorize_95_percentile(df)
-        df = pd.DataFrame(scaler.fit_transform(df), columns=df.columns)
+        df[feature_name] = windsorize_95_percentile(df[[feature_name]])
+        df[feature_name] = scaler.fit_transform(df[[feature_name]])
         model.fit(df[[feature_name]])
 
         self._df_unit.loc[duration_mask, score_name] = model.predict(df[[feature_name]])
@@ -290,7 +292,7 @@ class UnitDataProcessing(ItemFeatureProcessing):
 
     def make_score_unit__gps(self, feature_name):
         data = self.make_score__gps()
-        features = ['s__gps_proximity_counts', 's__gps_spatial_outlier']
+        features = ['s__gps_proximity_counts', 's__gps_spatial_outlier', 's__gps_spatial_extreme_outlier']
 
         data = data.groupby('interview__id')[features].sum()
         data = data.reset_index()
@@ -302,16 +304,17 @@ class UnitDataProcessing(ItemFeatureProcessing):
         self._df_unit['s__gps_spatial_outlier'] = self._df_unit['interview__id'].map(
             data.set_index('interview__id')['s__gps_spatial_outlier']
         )
+        self._df_unit['s__gps_spatial_extreme_outlier'] = self._df_unit['interview__id'].map(
+            data.set_index('interview__id')['s__gps_spatial_extreme_outlier']
+        )
 
         data = self.df_item.groupby('interview__id')[feature_name].sum()
-        data = data.reset_index()
         score_name = feature_name.replace('f__', 's__')
-        self._df_unit[score_name] = self._df_unit['interview__id'].map(
-            data.set_index('interview__id')[feature_name]
-        )
+        self._df_unit[score_name] = self._df_unit['interview__id'].map(data)
 
         self._df_unit['s__gps_proximity_counts'].fillna(0, inplace=True)
         self._df_unit['s__gps_spatial_outlier'].fillna(0, inplace=True)
+        self._df_unit['s__gps_spatial_extreme_outlier'].fillna(0, inplace=True)
 
     # def make_feature_unit__comments(self):
     #     columns_to_check = ['f__comments_set', 'f__comment_length']
