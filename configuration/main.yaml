@@ -12,7 +12,11 @@ export_path: /Users/gabriele/App/rowsquared/mlss/data/externals
 output_file: unit_risk_score.csv
 
 
+<<<<<<<<< Temporary merge branch 1
 surveys: [EPforR_TAP]
+=========
+surveys: []
+>>>>>>>>> Temporary merge branch 2
 survey_version: all
 reload: false
 extract: true
