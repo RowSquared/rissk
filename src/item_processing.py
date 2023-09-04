@@ -37,13 +37,11 @@ class ItemFeatureProcessing(FeatureProcessing):
         return variables
 
     @staticmethod
-    def filter_columns(data, index_col, threshold=0.2):
-        # !TODO TRHESHOLD SHOLUD PROBABLY BE IN ABSOUTE TERMS AS IT WOULD BE AFFECTED
+    def filter_columns(data, index_col, threshold=100):
         drop_columns = []
         keep_columns = []
-        total_interviews = data.interview__id.nunique()
         for col in data.columns:
-            if (data[col].nunique() < 3 or data[col].count() / total_interviews < threshold) and col not in index_col:
+            if (data[col].nunique() < 3 or data[col].count() < threshold) and col not in index_col:
                 drop_columns.append(col)
             else:
                 keep_columns.append(col)
@@ -83,6 +81,7 @@ class ItemFeatureProcessing(FeatureProcessing):
         data.columns = replace_with_feature_name(list(data.columns), feature_name)
         data = data.reset_index()
         # Everything that has 0,0 as coordinates is an outlier
+        data['s__gps_spatial_extreme_outlier'] = 0
         data['s__gps_spatial_extreme_outlier'] = data['f__gps_latitude'].apply(lambda x: 1 if x == 0.000000 else 0)
         data['s__gps_spatial_extreme_outlier'] = data['f__gps_longitude'].apply(lambda x: 1 if x == 0.000000 else 0)
 
@@ -121,41 +120,40 @@ class ItemFeatureProcessing(FeatureProcessing):
                                              )
 
         # Set a threshold (e.g., 95th percentile of distances)
-        threshold = data[mask]['distance_to_median'].quantile(0.95) + 50
-
-        # Everything that is above 50 + the median distance is an outlier
+        # Everything that is above 30 + the median distance is an outlier
+        threshold = data[mask]['distance_to_median'].quantile(0.95) + 30
         data.loc[mask, 's__gps_spatial_extreme_outlier'] = data[mask]['distance_to_median'] > threshold
 
-        # MAke a further cleaning with dbscan
-        coords_columns = ['x', 'y']
-        model = DBSCAN(eps=0.3, min_samples=5)  # tune these parameters for your data
-        model.fit(data[mask][coords_columns])
-        data.loc[mask, 'outlier'] = model.fit_predict(data[mask][coords_columns])
-        data['outlier'] = data.apply(
-            lambda row: 1 if row['outlier'] == -1 or row['s__gps_spatial_extreme_outlier'] == 1 else 0, 1)
+        # # Make a further cleaning with dbscan
+        # coords_columns = ['x', 'y']
+        # model = DBSCAN(eps=0.5, min_samples=5)
+        # model.fit(data[mask][coords_columns])
+        # data.loc[mask, 'outlier'] = model.fit_predict(data[mask][coords_columns])
+        # data['s__gps_spatial_extreme_outlier'] = data.apply(
+        #     lambda row: 1 if row['outlier'] == -1 or row['s__gps_spatial_extreme_outlier'] == 1 else 0, 1)
 
         # USE COF if dataset hase less than 20000 samples else use LOF
         contamination = self.get_contamination_parameter('f__gps', method='medfilt', random_state=42)
         if data[mask].shape[0] < 10000:
             model = COF(contamination=contamination)
         else:
-            model = LOF(contamination=contamination)
-        model.fit(data[coords_columns])
+            model = LOF(contamination=contamination, n_neighbors=20)
         model.fit(data[mask][coords_columns])
         data.loc[mask, 's__gps_spatial_outlier'] = model.predict(data[mask][coords_columns])
 
-        return data.drop(columns=['x', 'y', 'z', 'accuracy','distance_to_median', 'outlier'])
+        return data.drop(columns=['x', 'y', 'z', 'accuracy', 'distance_to_median', 'outlier'], errors='ignore')
 
     def make_score__sequence_jump(self):
         feature_name = 'f__sequence_jump'
         score_name = self.rename_feature(feature_name)
-        df = self.df_item[~pd.isnull(self.df_item[feature_name])]#.copy()
+        df = self.df_item[~pd.isnull(self.df_item[feature_name])].copy()
         # Select only those variables that have at least three distinct values and more than one hundred records
         valid_variables = self.filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=3)
         df[score_name] = 0
+        contamination = self.get_contamination_parameter(feature_name)
         for var in valid_variables:
             mask = (df['variable_name'] == var)
-            model = INNE()
+            model = INNE(contamination=contamination, random_state=42)
             model.fit(df[mask][[feature_name]])
             df.loc[mask, score_name] = model.predict(df[mask][[feature_name]])
         return df
@@ -164,7 +162,7 @@ class ItemFeatureProcessing(FeatureProcessing):
 
         feature_name = 'f__first_decimal'
         score_name = self.rename_feature(feature_name)
-        df = self.df_item[~pd.isnull(self.df_item[feature_name])]#.copy()
+        df = self.df_item[~pd.isnull(self.df_item[feature_name])].copy()
         # Select only those variables that have at least three distinct values and more than one hundred records
         valid_variables = self.filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=3)
         df[score_name] = 0
@@ -239,7 +237,7 @@ class ItemFeatureProcessing(FeatureProcessing):
         feature_name = 'f__answer_position'
         score_name = self.rename_feature(feature_name)
 
-        df = self.df_item[~pd.isnull(self.df_item[feature_name])]#.copy()
+        df = self.df_item[~pd.isnull(self.df_item[feature_name])].copy()
         # Select only those variables that have at least three distinct values and more than one hundred records
         valid_variables = self.filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=3)
         df[score_name] = 0
@@ -266,7 +264,7 @@ class ItemFeatureProcessing(FeatureProcessing):
     def make_score__answer_selected(self):
         feature_name = 'f__answer_selected'
         score_name = self.rename_feature(feature_name)
-        df = self.df_item[~pd.isnull(self.df_item[feature_name])]#.copy()
+        df = self.df_item[~pd.isnull(self.df_item[feature_name])].copy()
         # Select only those variables that have at least three distinct values and more than one hundred records
         valid_variables = self.filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=3)
         df[score_name] = 0
@@ -335,7 +333,7 @@ class ItemFeatureProcessing(FeatureProcessing):
                                 & (self.df_item['is_filtered_combobox'] == False)
                                 & (pd.isnull(self.df_item['cascade_from_question_id'])))
 
-        df = self.df_item[single_question_mask].copy()
+        df = self.df_item[single_question_mask]#.copy()
         # Select only those variables that have at least three distinct values and more than one hundred records
 
         variables = self.filter_variable_name_by_frequency(df, 'value', frequency=100, min_unique_values=3)
@@ -365,7 +363,7 @@ class ItemFeatureProcessing(FeatureProcessing):
 
         score_name = self.rename_feature(feature_name)
 
-        multi_question_mask = (self.df_item['type'] == 'MultyOptionsQuestion')
+        multi_question_mask = (self.df_item['type'] == 'MultyOptionsQuestion').copy()
 
         df = self.df_item[multi_question_mask].copy()
         # Select only those variables that have at least three distinct values and more than one hundred records
@@ -373,13 +371,13 @@ class ItemFeatureProcessing(FeatureProcessing):
         # Get the unique variable names that meet the conditions
         variables = valid_variables['variable_name'].unique()
 
-        df[score_name] = 0
+        df.loc[score_name] = 0
         for var in variables:
             mask = (df['variable_name'] == var)
             unique_values = len([v for v in df[mask]['value'].explode().unique() if v != '##N/A##'])
             entropy_df = df[mask].groupby('responsible')['value'].apply(calculate_list_entropy,
                                                                         unique_values=unique_values,
-                                                                        min_record_sample=5).copy()
+                                                                        min_record_sample=5)
             entropy_df = entropy_df.reset_index()
             entropy_df = entropy_df[~pd.isnull(entropy_df['value'])]
 
@@ -420,18 +418,16 @@ class ItemFeatureProcessing(FeatureProcessing):
         for var in variable_list:
 
             bj_mask = (benford_jensen_df['variable_name'] == var) & (~pd.isnull(benford_jensen_df[feature_name]))
-            bj_df = benford_jensen_df[bj_mask].copy()
+            bj_df = benford_jensen_df[bj_mask]
             if bj_df.shape[0] > 0:
                 bj_df.sort_values(feature_name, inplace=True, ascending=True)
 
                 median_value = bj_df[feature_name].median()
-                bj_df[score_name] = bj_df[feature_name].apply(
+                df.loc[df['variable_name'] == var, score_name]  = bj_df[feature_name].apply(
                     lambda x: 1 if x > median_value + 50 / 100 * median_value else 0)
-
-                df.loc[df['variable_name'] == var, score_name] = df[df['variable_name'] == var]['responsible'].map(
-                    bj_df.set_index('responsible')[score_name])
-
-
+                #
+                # df.loc[df['variable_name'] == var, score_name] = df[df['variable_name'] == var]['responsible'].map(
+                #     bj_df.set_index('responsible')[score_name])
         return df
 
     # def make_score__last_digit(self):

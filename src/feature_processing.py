@@ -7,8 +7,8 @@ class FeatureProcessing(ImportManager):
         super().__init__(config)
 
         self.extract()
-        paradata, questionaire, microdata = self.get_dataframes(reload=self.config['reload'],
-                                                                save_to_disk=self.config['save_to_disk'])
+        paradata, questionaire, microdata = self.get_dataframes(reload=self.config['environment']['reload'],
+                                                                save_to_disk=self.config['environment']['save_to_disk'])
         print('Data Loaded')
         self._allowed_features = ['f__' + k for k, v in config['features'].items() if v['use']]
         self.item_level_columns = ['interview__id', 'variable_name', 'roster_level']
@@ -18,6 +18,7 @@ class FeatureProcessing(ImportManager):
         print('Items Build')
         self._df_unit = self.make_df_unit()
         print('Unit Build')
+        self._df_resp = self.make_df_responsible()
         # Define ask that get recurrently used
         self.numeric_question_mask = (
                 (self._df_item['type'] == 'NumericQuestion') &
@@ -44,7 +45,7 @@ class FeatureProcessing(ImportManager):
                     getattr(self, method_name)(feature_name)
                     # print(f"{feature_name} Processed")
                 except Exception as e:
-                    print("ERROR ON FEATURE ITEM: {}, It won't be used in further calculation".format(feature_name))
+                    print("WARNING: FEATURE ITEM: {} won't be used in further calculation".format(feature_name))
         return self._df_item
 
     @property
@@ -56,7 +57,7 @@ class FeatureProcessing(ImportManager):
                     print(f"Processing {feature_name} ...")
                     getattr(self, method_name)(feature_name)
                 except Exception as e:
-                    print("ERROR ON FEATURE UNIT: {}, It won't be used in further calculation".format(feature_name))
+                    print("WARNING: FEATURE UNIT: {}, It won't be used in further calculation".format(feature_name))
         return self._df_unit
 
     @property
@@ -86,26 +87,32 @@ class FeatureProcessing(ImportManager):
 
     @property
     def df_microdata(self):
-        paradata, questionaire, microdata = self.get_dataframes(reload=self.config['reload'],
-                                                                save_to_disk=self.config['save_to_disk'])
+        paradata, questionaire, microdata = self.get_dataframes(reload=self.config['environment']['reload'],
+                                                                save_to_disk=self.config['environment']['save_to_disk'])
         return microdata
 
     @property
     def df_questionaire(self):
-        paradata, questionaire, microdata = self.get_dataframes(reload=self.config['reload'],
-                                                                save_to_disk=self.config['save_to_disk'])
+        paradata, questionaire, microdata = self.get_dataframes(reload=self.config['environment']['reload'],
+                                                                save_to_disk=self.config['environment']['save_to_disk'])
         return questionaire
 
-    def make_index_col(self, df, columns=None):
-        if columns is None:
-            columns = self.item_level_columns
+    def make_index_col(self, df):
 
-        # define internal variable for level columns
-        def merge_columns(row, select_columns):
-            return '_'.join(
-                [str(row[col]) for col in select_columns if pd.isnull(row[col]) is False and row[col] != ''])
+        # Filter out columns with NaN and empty strings
+        mask = (~df[['interview__id', 'variable_name', 'roster_level']].isnull()) & \
+               (df[['interview__id', 'variable_name', 'roster_level']] != '')
 
-        df['index_col'] = df[columns].apply(merge_columns, args=(columns,), axis=1)
+        # Use the mask to replace invalid values with an empty string
+        filtered_df = df.where(mask, '')
+
+        # Concatenate the columns with an underscore separator
+        df['index_col'] = filtered_df['interview__id'].astype(str) + "_" + \
+                          filtered_df['variable_name'].astype(str) + "_" + \
+                          filtered_df['roster_level'].astype(str)
+
+        # Remove trailing and leading underscores if they exist
+        df['index_col'] = df['index_col'].str.strip('_')
         return df
 
     def make_df_item(self, microdata):
@@ -192,7 +199,8 @@ class FeatureProcessing(ImportManager):
 
         # Get the min date from the min question sequesce as there might be some time setting
         # change later that would change the starting date if just looking at the min of timestamp_local
-        starting_timestamp = df_time[df_time['event'].isin(['AnswerSet'])].groupby('interview__id')['timestamp_local'].min()
+        starting_timestamp = df_time[df_time['event'].isin(['AnswerSet'])].groupby('interview__id')[
+            'timestamp_local'].min()
         df_time['f__starting_timestamp'] = df_time['interview__id'].map(starting_timestamp)
 
         min_date = df_time['f__starting_timestamp'].min()
@@ -258,9 +266,15 @@ class FeatureProcessing(ImportManager):
         df_unit = self.add_unit_time_features(df_unit)
         return df_unit
 
+    def make_df_responsible(self):
+        df_resp = self.df_active_paradata[['responsible']].copy()
+        df_resp.drop_duplicates(inplace=True)
+        df_resp = df_resp[(df_resp['responsible'] != '') & (~pd.isnull(df_resp['responsible']))]
+        return df_resp
+
     def save_data(self, df, file_name):
 
-        target_dir = os.path.join(self.config.data.raw, self.config.surveys)
+        target_dir = os.path.join(self.config['environment']['data']['raw'], self.config.surveys)
         survey_path = os.path.join(target_dir, self.config.survey_version)
         processed_data_path = os.path.join(survey_path, 'processed_data')
         df.to_pickle(os.path.join(processed_data_path, f'{file_name}.pkl'))
@@ -406,7 +420,6 @@ class FeatureProcessing(ImportManager):
         self._df_item.loc[multi_list_mask, feature_name] = self._df_item.loc[multi_list_mask, 'value'].apply(
             count_elements_or_nan)
         # f__share_selected, share between answers selected, and available answers (only for unlinked questions)
-        # TODO! confirm that it makes sense to use just put f__answer_share_selected in place of f__answer_selected
         self._df_item[feature_name] = self._df_item[feature_name] / self._df_item['n_answers']
 
     def make_feature_item__comment_length(self, feature_name):
@@ -520,7 +533,6 @@ class FeatureProcessing(ImportManager):
 
             df_unit = df_unit.merge(df_pause, how='left', on='interview__id')
         return df_unit
-
 
     def add_unit_time_features(self, df_unit):
         # Define the list of features depending on time

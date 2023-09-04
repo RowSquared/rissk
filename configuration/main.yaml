@@ -1,26 +1,15 @@
 # @package _global_
 version_base: 0.01
-data:
-  externals: ../data/externals
-  raw: ../data/raw
-  processed: ../data/processed
-  final: ../data/final
-  results: ../results
+defaults:
+  - environment/notebook_environment
 
-export_path: /Users/gabriele/App/rowsquared/mlss/data/externals
+export_path: .
 
 output_file: unit_risk_score.csv
 
 
-<<<<<<<<< Temporary merge branch 1
-surveys: [EPforR_TAP]
-=========
 surveys: []
->>>>>>>>> Temporary merge branch 2
-survey_version: all
-reload: false
-extract: true
-save_to_disk: false
+survey_version: null
 
 features:
   answer_hour_set:
@@ -60,17 +49,19 @@ features:
     use: true
   sequence_jump:
     use: true
-  string_length:
-    use: false
+    parameters:
+      contamination: 0.1
   time_changed:
     use: true
   gps:
     use: true
     sub_features: [gps_latitude, gps_longitude, gps_accuracy]
     parameters:
-      contamination: 0.10
+      contamination: 0.11
   pause_count:
     use: true
+    parameters:
+      contamination: 0.11
   pause_duration:
     use: true
     parameters:
@@ -81,14 +72,20 @@ features:
     use: false
   number_answered:
     use: true
+    parameters:
+      contamination: 0.11
   total_duration:
     use: true
+    parameters:
+      contamination: 0.11
   total_elapse:
-    use: false
+    use: true
+    parameters:
+      contamination: 0.1
   single_question:
     use: false
   multi_option_question:
-      use: false
+      use: true
   days_from_start:
     use: false
   comment_length:
@@ -96,4 +93,6 @@ features:
   comment_set:
     use: false
   comment_duration:
+    use: false
+  string_length:
     use: false

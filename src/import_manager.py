@@ -1,6 +1,4 @@
 import json
-import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
 import pandas as pd
 import numpy as np
 import os
@@ -358,7 +356,7 @@ def get_questionaire(survey_path, survey_name, survey_version):
     qnr_df = pd.DataFrame()
     questionaire_path = os.path.join(survey_path, 'Questionnaire/content/document.json')
     if os.path.exists(questionaire_path):
-        with open(questionaire_path, encoding='utf-8') as file:
+        with open(questionaire_path, encoding='utf8') as file:
             json_data = json.load(file)
 
         question_data = []
@@ -423,7 +421,12 @@ def get_paradata(survey_path, df_questionnaires, survey_name, survey_version):
     df_para = set_survey_name_version(df_para, survey_name, survey_version)
 
     if df_questionnaires.empty is False:
-        df_para = df_para.merge(df_questionnaires, how='left', left_on=['param', 'survey_name', 'survey_version'],
+        q_columns = ['qnr_seq', 'variable_name', 'type', 'question_type', 'answers', 'question_scope',
+                     'yes_no_view', 'is_filtered_combobox',
+                     'is_integer', 'cascade_from_question_id', 'answer_sequence', 'n_answers', 'question_sequence',
+                     'survey_name', 'survey_version']
+        df_para = df_para.merge(df_questionnaires[q_columns], how='left',
+                                left_on=['param', 'survey_name', 'survey_version'],
                                 right_on=['variable_name', 'survey_name', 'survey_version'])
 
     # Normalize column names
@@ -475,23 +478,24 @@ class ImportManager:
         self.file_dict = {}
         self.get_survey_version()
 
+
     def get_files(self):
         """
         Get a dictionary with all zip files from the surveys defined in the config.
         """
-        # code omitted for brevity
         # Get a dictionary with all zip files from the surveys defined in config
         if self.config.surveys == 'all':
-            import_path = os.listdir(self.config.data.externals)
+            import_path = os.listdir(self.config['environment']['data']['externals'])
         else:
             # Get surveys defined in the config file that are present in the path
-            import_path = [survey for survey in self.config.surveys if survey in os.listdir(self.config.data.externals)]
-
+            import_path = [survey for survey in self.config.surveys if survey in os.listdir(self.config['environment']['data']['externals'])]
+        if len(import_path) == 0:
+            raise ValueError(f"ERROR: survey path {self.config['export_path']} does not exists")
         for survey_name in import_path:
-            if os.path.isdir(os.path.join(self.config.data.externals, survey_name)):
+            if os.path.isdir(os.path.join(self.config['environment']['data']['externals'], survey_name)):
                 self.file_dict[survey_name] = self.file_dict.get(survey_name, {})
 
-                survey_path = os.path.join(self.config.data.externals, survey_name)
+                survey_path = os.path.join(self.config['environment']['data']['externals'], survey_name)
                 for filename in os.listdir(survey_path):
                     if filename.endswith('.zip'):
 
@@ -512,12 +516,18 @@ class ImportManager:
         """
         self.get_files()
         if self.config.surveys != 'all':
-            if self.config.survey_version != 'all':
-                self.file_dict = {k: {nk: v for nk, v in nested_dict.items() if nk in self.config.survey_version} for
-                                  k, nested_dict in self.file_dict.items() if k in self.config.surveys}
-            else:
+            if self.config.survey_version is None:
+                if len(self.file_dict[self.config.surveys[0]]) > 1:
+                    raise ValueError(f"There are multiple versions in {self.config['export_path']}. "
+                                     f"Either specify survey_version=all in python main.py i.e. \n"
+                                     f"python main.py export_path={self.config['export_path']} output_file={self.config['output_file']} survey_version=all "
+                                     f"\n OR provide a path with only one version.")
+            elif self.config.survey_version == 'all':
                 self.file_dict = {survey: survey_data for survey, survey_data in self.file_dict.items() if
                                   survey in self.config.surveys}
+            else:
+                self.file_dict = {k: {nk: v for nk, v in nested_dict.items() if nk in self.config.survey_version} for
+                                  k, nested_dict in self.file_dict.items() if k in self.config.surveys}
 
     def extract(self, overwrite_dir=False):
         """
@@ -526,9 +536,9 @@ class ImportManager:
         Parameters:
         overwrite_dir: A boolean indicating whether to overwrite the existing directory.
         """
-        if self.config['extract']:
+        if self.config['environment']['extract']:
             for survey_name, survey in self.file_dict.items():
-                target_dir = os.path.join(self.config.data.raw, survey_name)
+                target_dir = os.path.join(self.config['environment']['data']['raw'], survey_name)
                 if overwrite_dir and os.path.exists(target_dir):
                     shutil.rmtree(target_dir)
                 # Create a new target directory if it does not yet exist
@@ -586,7 +596,7 @@ class ImportManager:
         dfs_questionnaires = []
         dfs_microdata = []
         for survey_name, survey in self.file_dict.items():
-            target_dir = os.path.join(self.config.data.raw, survey_name)
+            target_dir = os.path.join(self.config['environment']['data']['raw'], survey_name)
 
             for survey_version, files in survey.items():
                 print(f"IMPORTING: {survey_name} with version {survey_version}. ")
