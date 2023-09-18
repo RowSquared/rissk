@@ -1,4 +1,4 @@
-![RISSK Logo](https://github.com/RowSquared/mlss/blob/main/rissk.png)
+![RISSK Logo](rissk.png)
 
 # What is RISSK?
 
