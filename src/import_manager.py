@@ -5,7 +5,7 @@ import os
 import shutil
 import zipfile
 from src.utils.general_utils import *
-
+import sys
 
 def load_dataframes(processed_data_path):
     df_paradata = pd.read_pickle(os.path.join(processed_data_path, 'paradata.pkl'))
@@ -477,6 +477,8 @@ class ImportManager:
         self.config = config
         self.file_dict = {}
         self.get_survey_version()
+        if self.config.get('password'):
+            self.config['password'] = self.config['password'].encode()
 
 
     def get_files(self):
@@ -562,20 +564,33 @@ class ImportManager:
                         try:
                             paradata_path = os.path.join(file_path, paradata_file)
                             with zipfile.ZipFile(paradata_path, 'r') as zip_ref:
-                                zip_ref.extractall(dest_path)
+                                zip_ref.extractall(dest_path, pwd=self.config.get('password'))
+                        except RuntimeError as e:
+                            if 'password' in str(e):
+                                print("ERROR: Incorrect password provided for the ZIP file. "
+                                      "Re-run the program again with password=<password> as argument.")
+                                sys.exit(1)
+
                         except ValueError:
-                            print(f"WARNING: survey {survey_name} with version {survey_version} has not paradata file")
+                            print(f"ERROR: survey {survey_name} with version {survey_version} has no paradata file")
                             shutil.rmtree(dest_path)
+                            sys.exit(1)
                     # If microdata
                     if files.get('Tabular'):
                         try:
                             microdata_file = os.path.join(file_path, files['Tabular'])
                             with zipfile.ZipFile(microdata_file, 'r') as zip_ref:
-                                zip_ref.extractall(dest_path)
+                                zip_ref.extractall(dest_path, pwd=self.config.get('password'))
                             content_zip_path = os.path.join(dest_path, "Questionnaire", "content.zip")
                             content_dir = os.path.join(dest_path, "Questionnaire", "content")
                             with zipfile.ZipFile(content_zip_path, 'r') as zip_ref:
                                 zip_ref.extractall(content_dir)
+
+                        except RuntimeError as e:
+                                if 'password' in str(e):
+                                    print("ERROR: Incorrect password provided for the ZIP file. "
+                                          "Re-run the program again with password=<password> as argument.")
+                                    sys.exit(1)
                         except ValueError:
                             print(f"WARNING: survey {survey_name} with version {survey_version} has missing files")
                             shutil.rmtree(dest_path)

@@ -5,11 +5,12 @@ defaults:
 
 export_path: .
 
-output_file: unit_risk_score.csv
+output_file: results/unit_risk_score.csv
 feature_score: false
 
 surveys: []
 survey_version: null
+password: null
 
 automatic_contamination: false
 features:

@@ -10,14 +10,19 @@ warnings.simplefilter(action='ignore', category=Warning)
 
 
 def manage_path(config):
+    root_path = HydraConfig.get().runtime.cwd
     if config['export_path'] is not None:
         if os.path.isabs(config['export_path']) is False:
-            root_path = HydraConfig.get().runtime.cwd
             config['export_path'] = os.path.join(root_path, config['export_path'])
         config['environment']['data']['externals'] = os.path.dirname(config['export_path'])
+        for key, value in config['environment']['data'].items():
+            # Check if the value is a relative path
+            if not os.path.isabs(value):
+                # Convert the relative path to an absolute path
+                config['environment']['data'][key] = os.path.join(root_path, value)
         config['surveys'] = [os.path.basename(config['export_path'])]
     if os.path.isabs(config['output_file']) is False:
-        root_path = HydraConfig.get().runtime.cwd
+
         config['output_file'] = os.path.join(root_path, config['output_file'])
     return config
 
