@@ -129,7 +129,7 @@ class FeatureProcessing(ImportManager):
         data = self.df_active_paradata[answer_set_mask].drop_duplicates(subset='index_col', keep='last')
         df_item = df_item.merge(data[paradata_columns + ['index_col']], how='left',
                                 on='index_col')
-        # Remove items that arew not in interviewing
+        # Remove items that are not in interviewing
         df_item = df_item[df_item['interviewing'] == True]
         df_item = self.add_sequence_features(df_item)
 
@@ -256,6 +256,25 @@ class FeatureProcessing(ImportManager):
         paradata = self.make_index_col(paradata)
         paradata.sort_values(['interview__id', 'order'], inplace=True)
         paradata.reset_index(inplace=True)
+
+        paradata = self.filter_by_consent(paradata)
+
+        return paradata
+
+    def filter_by_consent(self, paradata):
+        if self.config['limit_unit'] is not None:
+            consent_variable = next(iter(self.config['limit_unit']))  # Get the first (and only) key in the dictionary
+            # Careful! Answer value is a string in paradata.
+            # Therefore also consent_value must be set to a string.
+            consent_value = str(self.config['limit_unit'][consent_variable])
+
+            cond1 = (paradata['variable_name'] == consent_variable)
+            cond2 = (paradata['answer'] == consent_value)
+
+            filtered_interview_id = paradata[cond1 & cond2]['interview__id'].unique()
+
+            paradata = paradata[paradata['interview__id'].isin(filtered_interview_id)].copy()
+
         return paradata
 
     def make_df_unit(self):
