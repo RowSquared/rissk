@@ -1,14 +1,24 @@
-from src.import_manager import *
+#from rissk.import_manager import *
+from rissk.utils.import_utils import *
 
 
-class FeatureProcessing(ImportManager):
+class FeatureProcessing(object):
 
     def __init__(self, config):
-        super().__init__(config)
 
-        self.extract()
-        paradata, questionaire, microdata = self.get_dataframes(reload=self.config['environment']['reload'],
-                                                                save_to_disk=self.config['environment']['save_to_disk'])
+        self.config = config = {k:v for k,v in config.items()}
+
+        if self.config.get('password'):
+            self.config['password'] = self.config['password'].encode()
+
+        file_dict = get_file_dict(config)
+        extraction_path = self.config['environment']['data']['raw']
+        extract_survey(file_dict, extraction_path, **config)
+        dest_path = self.config['environment']['data']['processed']
+        paradata, questionaire, microdata = get_dataframes(file_dict, extraction_path, dest_path, config,
+                                                                      reload=self.config['environment']['reload'],
+                                                                      save_to_disk=self.config['environment']['save_to_disk'])
+
         print('Data Loaded')
         self._allowed_features = ['f__' + k for k, v in config['features'].items() if v['use']]
         self.item_level_columns = ['interview__id', 'variable_name', 'roster_level']

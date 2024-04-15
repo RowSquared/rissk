@@ -1,7 +1,7 @@
 import os
 from omegaconf import DictConfig, OmegaConf
 from hydra.core.hydra_config import HydraConfig
-from src.unit_proccessing import *
+from rissk.unit_proccessing import *
 import hydra
 # from memory_profiler import memory_usage
 import warnings

@@ -1,5 +1,5 @@
-from src.item_processing import *
-from src.detection_algorithms import *
+from rissk.item_processing import *
+from rissk.detection_algorithms import *
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
 from sklearn.preprocessing import normalize
 # from sklearn.decomposition import PCA
