@@ -30,7 +30,7 @@ def fs_mkrdir(path, key=None, secret=None, is_local=True, **kwargs):
         os.makedirs(path, exist_ok=True)
     else:
         fs = s3fs.S3FileSystem(anon=False, key=key, secret=secret)
-        fs.mkdirs(path, create_parents=True)
+        fs.mkdir(path, exist_ok=True)
 
 
 def fs_listdir(path, key=None, secret=None, is_local=True, **kwargs):

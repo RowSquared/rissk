@@ -31,7 +31,7 @@ def get_import_path(path, survey_names, **kwargs):
     return import_path
 
 
-def update_file_dict_version(file_dict, surveys, survey_version, export_path, output_file):
+def update_file_dict_version(file_dict, surveys, survey_version, export_path):
     """
     Update the file dictionary based on the surveys specified in the config.
     """
@@ -41,7 +41,7 @@ def update_file_dict_version(file_dict, surveys, survey_version, export_path, ou
             if len(file_dict[surveys[0]]) > 1:
                 raise ValueError(f"There are multiple versions in {export_path}. "
                                  f"Either specify survey_version=all in python main.py i.e. \n"
-                                 f"python main.py export_path={export_path} output_file={output_file} survey_version=all "
+                                 f"python main.py export_path={export_path} survey_version=all "
                                  f"\n OR provide a path with only one version.")
         elif survey_version == 'all':
             file_dict = {survey: survey_data for survey, survey_data in file_dict.items() if
@@ -87,7 +87,7 @@ def get_file_dict(config):
     # Filter out folders without ZIP files.
     file_dict = {k: v for k, v in file_dict.items() if len(v) > 0}
 
-    file_dict = update_file_dict_version(file_dict, survey_names, survey_version, survey_path, output_file)
+    file_dict = update_file_dict_version(file_dict, survey_names, survey_version, survey_path)
     return file_dict
 
 
