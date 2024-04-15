@@ -21,7 +21,7 @@ def fs_exists(path, key=None, secret=None, is_local=True, **kwargs):
     if is_local is True:
         return os.path.exists(path)
     else:
-        fs = s3fs.S3FileSystem(anon=False, key=key, secret=secret, **kwargs)
+        fs = s3fs.S3FileSystem(anon=False, key=key, secret=secret)
         return fs.exists(path)
 
 
@@ -29,7 +29,7 @@ def fs_mkrdir(path, key=None, secret=None, is_local=True, **kwargs):
     if is_local is True:
         os.makedirs(path, exist_ok=True)
     else:
-        fs = s3fs.S3FileSystem(anon=False, key=key, secret=secret, **kwargs)
+        fs = s3fs.S3FileSystem(anon=False, key=key, secret=secret)
         fs.mkdirs(path, create_parents=True)
 
 
