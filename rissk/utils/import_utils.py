@@ -17,37 +17,6 @@ def assign_type(df, dtypes):
     return df
 
 
-
-def get_questionaire_map(raw_path, **config):
-    questionaire_map = {}
-    questionaire_list = fs_listdir(raw_path, key=config['key'], secret=config['secret'], is_local=False)
-    for questionaire in questionaire_list:
-        if questionaire.endswith('.json'):
-            file_name = os.path.basename(questionaire)
-            questionaire_id = file_name.split('_')[0].replace('-', '')
-            questionaire_version = questionaire.split('_')[1].replace('.json','')
-            questionaire_map[questionaire_id] = {
-                'file_name': file_name,
-                'questionaire_version': questionaire_version,
-                'file_path': os.path.join(raw_path, file_name)
-            }
-    return questionaire_map
-
-
-def open_questionaire(raw_path, questionaire_id, **config):
-    questionaire_map = get_questionaire_map(raw_path, **config)
-    file_path = questionaire_map.get(questionaire_id).get('file_path')
-    with fs_open(file_path, **config, mode='r') as f:
-        data = json.load(f)
-    return data
-
-
-def get_questionaire_id(extracted_path, **config):
-    file_path = os.path.join(extracted_path, 'export__info.json')
-    with fs_open(file_path, **config, mode='r') as f:
-        data = json.load(f)
-    return data.get('QuestionnaireId').split("$")[0]
-
 def get_import_path(path, survey_names, **kwargs):
     available_surveys = fs_listdir(path, **kwargs)
 
@@ -139,7 +108,7 @@ def load_dataframes(processed_data_path, config):
 def save_parquet(df, file_path, **config):
     with fs_open(file_path, **config, mode='wb') as f:
         if 'answer_sequence' in df.columns:
-            schema = pa.schema([pa.field('answer_sequence', pa.list_(pa.int()))])
+            schema = pa.schema([pa.field('answer_sequence', pa.list_(pa.int64()))])
             df.to_parquet(f, schema=schema)
         else:
             df.to_parquet(f)
@@ -286,9 +255,37 @@ def get_microdata(s_path, df_questionnaires, s_name, s_version, **config):
     return combined_df
 
 
-def read_json_questionaire(survey_path, config):
-    file_path = os.path.join(survey_path, 'Questionnaire/content/document.json')
-    with fs_open(file_path, config, mode='r') as f:
+def get_questionaire_map(raw_path, **config):
+    questionaire_map = {}
+    questionaire_list = fs_listdir(raw_path, key=config['key'], secret=config['secret'], is_local=False)
+    for questionaire in questionaire_list:
+        if questionaire.endswith('.json'):
+            file_name = os.path.basename(questionaire)
+            questionaire_id = file_name.split('_')[0].replace('-', '')
+            questionaire_version = questionaire.split('_')[1].replace('.json', '')
+            questionaire_map[questionaire_id] = {
+                'file_name': file_name,
+                'questionaire_version': questionaire_version,
+                'file_path': os.path.join(raw_path, file_name)
+            }
+    return questionaire_map
+
+
+def get_questionaire_id(extracted_path, **config):
+    file_path = os.path.join(extracted_path, 'export__info.json')
+    with fs_open(file_path, **config, mode='r') as f:
+        data = json.load(f)
+    return data.get('QuestionnaireId').split("$")[0]
+
+
+def read_json_questionaire(survey_path, questionaire_path=None, **config):
+    if questionaire_path is None:
+        file_path = os.path.join(survey_path, 'Questionnaire/content/document.json')
+    else:
+        questionaire_id = get_questionaire_id(survey_path, **config)
+        questionaire_map = get_questionaire_map(questionaire_path, **config)
+        file_path = questionaire_map.get(questionaire_id).get('file_path')
+    with fs_open(file_path, **config, mode='r') as f:
         data = json.load(f)
     return data
 
@@ -300,7 +297,7 @@ def read_paradata(survey_path, delimiter='\t', **config):
     return df
 
 
-def get_questionaire(s_path, s_name, s_version, zip_path=None, **config):
+def get_questionaire(s_path, s_name, s_version, questionaire_path=None, **config):
     """
     This function loads and processes a questionnaire from a JSON file located at the specified path.
     It also handles the categorization of the data.
@@ -312,12 +309,8 @@ def get_questionaire(s_path, s_name, s_version, zip_path=None, **config):
     qnr_df (DataFrame): A processed DataFrame containing the questionnaire data.
 
     """
-    if config['is_local']:
-        q_data = read_json_questionaire(s_path, config)
-    else:
-        questionaire_id = get_questionaire_id(s_path, **config)
-        open_questionaire(zip_path, questionaire_id, **config)
-        q_data = open_questionaire(s_path, s_name, **config)
+    q_data = read_json_questionaire(s_path, questionaire_path=questionaire_path, **config)
+
     qnr_df = pd.DataFrame()
 
     if q_data is not None:
