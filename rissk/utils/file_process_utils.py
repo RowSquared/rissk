@@ -122,7 +122,7 @@ def process_json_structure(children, parent_group_title, counter, question_data)
             question_data.append({
                 "qnr_seq": counter,
                 "VariableName": child.get("VariableName"),
-                "type": child["$type"],
+                "qtype": child["$type"],
                 "QuestionType": child.get("QuestionType"),
                 "Answers": child.get("Answers"),
                 "Children": child.get("Children"),

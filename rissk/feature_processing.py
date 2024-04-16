@@ -11,7 +11,7 @@ class FeatureProcessing(object):
         if self.config.get('password'):
             self.config['password'] = self.config['password'].encode()
 
-        file_dict = get_file_dict(config)
+        file_dict = get_survey_info(config)
         extraction_path = self.config['environment']['data']['raw']
         extract_survey(file_dict, extraction_path, **config)
         dest_path = self.config['environment']['data']['processed']
@@ -31,7 +31,7 @@ class FeatureProcessing(object):
         self._df_resp = self.make_df_responsible()
         # Define ask that get recurrently used
         self.numeric_question_mask = (
-                (self._df_item['type'] == 'NumericQuestion') &
+                (self._df_item["qtype"] == 'NumericQuestion') &
                 (self._df_item['value'] != '') &
                 (~pd.isnull(self._df_item['value'])) &
                 (self._df_item['value'] != -999999999)
@@ -84,7 +84,7 @@ class FeatureProcessing(object):
 
         vars_needed = ['interview__id', 'order', 'event', 'responsible', 'role', 'tz_offset',
                        'param', 'answer', 'roster_level', 'timestamp_local', 'variable_name',
-                       'question_sequence', 'question_scope', 'type', 'question_type',
+                       'question_sequence', 'question_scope', "qtype", 'question_type',
                        'survey_name', 'survey_version', 'interviewing', 'yes_no_view', 'index_col', 'f__answer_hour_set'
                        ]
 
@@ -128,7 +128,7 @@ class FeatureProcessing(object):
     def make_df_item(self, microdata):
 
         microdata = self.make_index_col(microdata)
-        df_item = microdata[['value', 'type', 'is_integer', 'qnr_seq',
+        df_item = microdata[['value', "qtype", 'is_integer', 'qnr_seq',
                              'n_answers', 'answer_sequence',
                              'cascade_from_question_id', 'is_filtered_combobox',
                              'index_col'] + self.item_level_columns]
@@ -315,7 +315,7 @@ class FeatureProcessing(object):
     ###### Feature item methods
     def make_feature_item__string_length(self, feature_name):
         # f__string_length, length of string answer, if TextQuestions else empty pd.NA
-        text_question_mask = (self._df_item['type'] == 'TextQuestion')
+        text_question_mask = (self._df_item["qtype"] == 'TextQuestion')
         self._df_item[feature_name] = pd.NA
         self._df_item.loc[text_question_mask, feature_name] = self._df_item.loc[
             text_question_mask, 'value'].str.len().astype('Int64')
@@ -361,7 +361,7 @@ class FeatureProcessing(object):
     def make_feature_item__answer_position(self, feature_name):
         # f__rel_answer_position, relative position of the selected answer
         # only questions with more than two answers
-        single_question_mask = ((self._df_item['type'] == 'SingleQuestion')
+        single_question_mask = ((self._df_item["qtype"] == 'SingleQuestion')
                                 & (self._df_item['n_answers'] > 2)
                                 & (self._df_item['is_filtered_combobox'] == False)
                                 & (pd.isnull(self._df_item['cascade_from_question_id'])))
@@ -393,7 +393,7 @@ class FeatureProcessing(object):
         df_changed_temp[feature_name] = False
 
         # list and multi-select questions (without yes_no_mode)
-        list_mask = (df_changed_temp['type'] == 'TextListQuestion')
+        list_mask = (df_changed_temp["qtype"] == 'TextListQuestion')
         multi_mask = (df_changed_temp['yes_no_view'] == False)
         df_changed_temp['answer_list'] = pd.NA
         df_changed_temp.loc[list_mask, 'answer_list'] = df_changed_temp.loc[list_mask, 'answer'].str.split('|')
@@ -408,7 +408,7 @@ class FeatureProcessing(object):
         # single answer question
         df_changed_temp['prev_answer'] = df_changed_temp.groupby(self.item_level_columns + ['index_col'])[
             'answer'].shift()
-        single_answer_mask = (~df_changed_temp['type'].isin(['MultyOptionsQuestion', 'TextListQuestion'])) & \
+        single_answer_mask = (~df_changed_temp["qtype"].isin(['MultyOptionsQuestion', 'TextListQuestion'])) & \
                              (df_changed_temp['prev_answer'].notna()) & \
                              (df_changed_temp['answer'] != df_changed_temp['prev_answer'])
         df_changed_temp.loc[single_answer_mask, feature_name] = True
@@ -437,7 +437,7 @@ class FeatureProcessing(object):
 
     def make_feature_item__answer_selected(self, feature_name):
         # f__answers_selected, number of answers selected in a multi-answer or list question
-        multi_list_mask = self._df_item['type'].isin(['MultyOptionsQuestion'])
+        multi_list_mask = self._df_item["qtype"].isin(['MultyOptionsQuestion'])
 
         # Function to calculate the number of elements in a list or return nan
         def count_elements_or_nan(val):
@@ -478,7 +478,7 @@ class FeatureProcessing(object):
 
     def make_feature_item__gps(self, feature_name):
         # f__gps_latitude, f__gps_longitude, f__gps_accuracy
-        gps_mask = self._df_item['type'] == 'GpsCoordinateQuestion'
+        gps_mask = self._df_item["qtype"] == 'GpsCoordinateQuestion'
         gps_df = self._df_item.loc[gps_mask, 'value'].str.split(',', expand=True)
         gps_df.columns = ['gps__Latitude', 'gps__Longitude', 'gps__Accuracy', 'gps__altitude', 'gps__timestamp_utc']
         self._df_item[feature_name] = False
@@ -496,7 +496,7 @@ class FeatureProcessing(object):
                            & (self._df_item['value'] != -999999999)
                            & (self._df_item['value'] != '##N/A##')
                            & (self._df_item['value'] != '')
-                           & (self._df_item['type'] != 'Variable')
+                           & (self._df_item["qtype"] != 'Variable')
                            )
         df_answer_set = self._df_item[answer_set_mask]
         df_answer_set = df_answer_set.groupby('interview__id').agg(
@@ -510,7 +510,7 @@ class FeatureProcessing(object):
         answer_unset_mask = (
                                     (self._df_item['value'] == -999999999)
                                     | (self._df_item['value'] == '##N/A##')
-                            ) & (self._df_item['type'] != 'Variable')
+                            ) & (self._df_item["qtype"] != 'Variable')
         df_answer_set = self._df_item[answer_unset_mask]
         df_answer_set = df_answer_set.groupby('interview__id').agg(
             f__number_unanswered=('value', 'count')

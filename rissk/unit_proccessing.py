@@ -340,6 +340,6 @@ class UnitDataProcessing(ItemFeatureProcessing):
     # def make_feature_unit__number_answers(self):
     #     answer_per_interview_df = self.df_active_paradata.groupby('interview__id').variable_name.nunique()
     #     answer_per_interview_df = answer_per_interview_df.reset_index()
-    #     total_questions = self.df_questionaire[self.df_questionaire['type'].str.contains('Question')]['type'].count()
+    #     total_questions = self.df_questionaire[self.df_questionaire["qtype"].str.contains('Question')]["qtype"].count()
     #     self._df_unit['f__number_answers'] = self.df_item['interview__id'].map(
     #         answer_per_interview_df.set_index('interview__id')['variable_name'] / total_questions)

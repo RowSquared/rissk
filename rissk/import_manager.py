@@ -4,7 +4,7 @@ import numpy as np
 import os
 import shutil
 import zipfile
-from src.utils.general_utils import *
+from rissk.utils.file_process_utils import *
 import sys
 
 def load_dataframes(processed_data_path):
@@ -165,10 +165,10 @@ def get_microdata(survey_path, df_questionnaires, survey_name, survey_version):
                       ('interview__', 'assignment__', 'paradata.tab'))]
 
     # define multi/list question conditions
-    unlinked_mask = (df_questionnaires['type'] == 'MultyOptionsQuestion') & (df_questionnaires['is_linked'] == False)
-    linked_mask = (df_questionnaires['type'] == 'MultyOptionsQuestion') & (df_questionnaires['is_linked'] == True)
-    list_mask = (df_questionnaires['type'] == 'TextListQuestion')
-    gps_mask = (df_questionnaires['type'] == 'GpsCoordinateQuestion')
+    unlinked_mask = (df_questionnaires["qtype"] == 'MultyOptionsQuestion') & (df_questionnaires['is_linked'] == False)
+    linked_mask = (df_questionnaires["qtype"] == 'MultyOptionsQuestion') & (df_questionnaires['is_linked'] == True)
+    list_mask = (df_questionnaires["qtype"] == 'TextListQuestion')
+    gps_mask = (df_questionnaires["qtype"] == 'GpsCoordinateQuestion')
 
     # extract multi/list question lists from conditions
     multi_unlinked_vars = df_questionnaires.loc[unlinked_mask, 'variable_name'].tolist()
@@ -262,7 +262,7 @@ def process_json_structure(children, parent_group_title, counter, question_data)
             question_data.append({
                 "qnr_seq": counter,
                 "VariableName": child.get("VariableName"),
-                "type": child["$type"],
+                "qtype": child["$type"],
                 "QuestionType": child.get("QuestionType"),
                 "Answers": child.get("Answers"),
                 "Children": child.get("Children"),
@@ -421,7 +421,7 @@ def get_paradata(survey_path, df_questionnaires, survey_name, survey_version):
     df_para = set_survey_name_version(df_para, survey_name, survey_version)
 
     if df_questionnaires.empty is False:
-        q_columns = ['qnr_seq', 'variable_name', 'type', 'question_type', 'answers', 'question_scope',
+        q_columns = ['qnr_seq', 'variable_name', "qtype", 'question_type', 'answers', 'question_scope',
                      'yes_no_view', 'is_filtered_combobox',
                      'is_integer', 'cascade_from_question_id', 'answer_sequence', 'n_answers', 'question_sequence',
                      'survey_name', 'survey_version']

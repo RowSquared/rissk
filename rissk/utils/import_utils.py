@@ -31,46 +31,44 @@ def get_import_path(path, survey_names, **kwargs):
     return import_path
 
 
-def update_file_dict_version(file_dict, surveys, survey_version, export_path):
+def update_survey_info(survey_info, surveys, survey_version):
     """
     Update the file dictionary based on the surveys specified in the config.
     """
 
     if surveys != 'all':
         if survey_version is None:
-            if len(file_dict[surveys[0]]) > 1:
-                raise ValueError(f"There are multiple versions in {export_path}. "
+            if len(survey_info[surveys[0]]) > 1:
+                raise ValueError(f"There are multiple versions in {surveys}. "
                                  f"Either specify survey_version=all in python main.py i.e. \n"
-                                 f"python main.py export_path={export_path} survey_version=all "
+                                 f"python main.py export_path={surveys} survey_version=all "
                                  f"\n OR provide a path with only one version.")
         elif survey_version == 'all':
-            file_dict = {survey: survey_data for survey, survey_data in file_dict.items() if
-                         survey in surveys}
+            survey_info = {survey: survey_data for survey, survey_data in survey_info.items() if
+                           survey in surveys}
         else:
-            file_dict = {k: {nk: v for nk, v in nested_dict.items() if nk in survey_version} for
-                         k, nested_dict in file_dict.items() if k in surveys}
-    return file_dict
+            survey_info = {k: {nk: v for nk, v in nested_dict.items() if nk in survey_version} for
+                           k, nested_dict in survey_info.items() if k in surveys}
+    return survey_info
 
 
-def get_file_dict(config):
+def get_survey_info(root_path, survey_names, survey_version, config):
     """
     Get a dictionary with all zip files from the surveys defined in the config.
     """
     # Get a dictionary with all zip files from the surveys defined in config
 
-    file_dict = {}
+    survey_info = {}
 
-    root_path = config['environment']['data']['externals']
-    survey_names = config['surveys']
-    survey_version = config['survey_version']
-    survey_path = config['export_path']
-    output_file = config['output_file']
+    #root_path = config['environment']['data']['externals']
+    #survey_names = config['surveys']
+    #survey_version = config['survey_version']
 
     import_path = get_import_path(root_path, survey_names, **config)
 
     for survey_name in import_path:
         if os.path.isdir(os.path.join(root_path, survey_name)):
-            file_dict[survey_name] = file_dict.get(survey_name, {})
+            survey_info[survey_name] = survey_info.get(survey_name, {})
 
             survey_path = os.path.join(root_path, survey_name)
             for filename in fs_listdir(survey_path, config):
@@ -79,16 +77,16 @@ def get_file_dict(config):
                     try:
                         questionnaire, version, file_format, interview_status = get_file_parts(filename)
                         q_name = f"{questionnaire}_{str(version)}"
-                        file_dict[survey_name][q_name] = file_dict[survey_name].get(q_name, {
+                        survey_info[survey_name][q_name] = survey_info[survey_name].get(q_name, {
                             'file_path': survey_path})
-                        file_dict[survey_name][q_name][file_format] = filename
+                        survey_info[survey_name][q_name][file_format] = filename
                     except ValueError:
                         print(f"WARNING: Survey {survey_name} with version filename {filename} Skipped")
     # Filter out folders without ZIP files.
-    file_dict = {k: v for k, v in file_dict.items() if len(v) > 0}
+    survey_info = {k: v for k, v in survey_info.items() if len(v) > 0}
 
-    file_dict = update_file_dict_version(file_dict, survey_names, survey_version, survey_path)
-    return file_dict
+    survey_info = update_survey_info(survey_info, survey_names, survey_version)
+    return survey_info
 
 
 def load_dataframes(processed_data_path, config):
@@ -107,24 +105,22 @@ def load_dataframes(processed_data_path, config):
     return df_paradata, df_questionnaire, df_microdata
 
 
+def save_parquet(df, file_path, **config):
+    with fs_open(file_path, **config, mode='wb') as f:
+        if 'answer_sequence' in df.columns:
+            schema = pa.schema([pa.field('answer_sequence', pa.list_(pa.int()))])
+            df.to_parquet(f, schema=schema)
+        else:
+            df.to_parquet(f)
+
+
 def save_dataframes(df_paradata, df_questionnaires, df_microdata, processed_data_path, config):
     # Create directory if it doesn't exist
     fs_mkrdir(processed_data_path, **config)
 
-    file_path = os.path.join(processed_data_path, 'questionnaire.parquet')
-    with fs_open(file_path, **config, mode='wb') as f:
-        df_questionnaires.to_parquet(f)
-
-    file_path = os.path.join(processed_data_path, 'paradata.parquet')
-    with fs_open(file_path, **config, mode='wb') as f:
-        df_paradata.to_parquet(f)
-
-    file_path = os.path.join(processed_data_path, 'microdata.parquet')
-    with fs_open(file_path, **config, mode='wb') as f:
-        # NOTE! The microdata file is saved with a schema that allows for lists of integers.
-        # This is necessary to store the answer_sequence column. You must add this to any other column that is a list.
-        schema = pa.schema([pa.field('answer_sequence', pa.list_(pa.int()))])
-        df_microdata.to_parquet(f)
+    save_parquet(df_questionnaires, os.path.join(processed_data_path, 'questionnaire.parquet'), **config)
+    save_parquet(df_paradata, os.path.join(processed_data_path, 'paradata.parquet'), **config)
+    save_parquet(df_microdata, os.path.join(processed_data_path, 'microdata.parquet'), **config)
 
 
 def get_data(s_path, s_name, s_version, config):
@@ -148,51 +144,67 @@ def get_data(s_path, s_name, s_version, config):
     return df_paradata, df_questionnaires, df_microdata
 
 
+def read_microdata_files(s_path, file_name, **config):
+    file_path = os.path.join(s_path, file_name)
+    if file_name.endswith('.dta'):
+        try:
+            with fs_open(file_path, mode='rb', **config) as f:
+                df = pd.read_stata(f, convert_categoricals=False, convert_missing=True)
+            # Manage missing values
+            df = df.where(df.astype(str) != '.a', -999999999)  # replace '.a' with -999999999 to match tabular export
+            df = df.where(df.astype(str) != '.', np.nan)  # replace '.' with np.nan
+        except Exception as e:
+            print(f"Error reading {file_path}: {e}")
+    else:
+        with fs_open(file_path, **config) as f:
+            df = pd.read_csv(f, delimiter='\t')
+    return df
+
+
+def get_microdata_file_list(s_path, **config):
+    file_names = []
+    excluded_files = ('interview__', 'assignment__', 'paradata.tab')
+    excluded_extensions = ('.dta', '.tab')
+    for file in fs_listdir(s_path, **config):
+        base_name = os.path.basename(file)
+        if base_name.endswith(excluded_extensions) and not base_name.startswith(excluded_files):
+            file_names.append(base_name)
+    return file_names
+
+
 def get_microdata(s_path, df_questionnaires, s_name, s_version, **config):
     drop_list = ['interview__key', 'sssys_irnd', 'has__errors', 'interview__status', 'assignment__id']
 
-    file_names = [file for file in fs_listdir(s_path, **config) if
-                  (file.endswith('.dta') or file.endswith('.tab')) and not file.startswith(
-                      ('interview__', 'assignment__', 'paradata.tab'))]
+    file_names = get_microdata_file_list(s_path, **config)
 
     # define multi/list question conditions
-    unlinked_mask = (df_questionnaires['type'] == 'MultyOptionsQuestion') & (df_questionnaires['is_linked'] == False)
-    linked_mask = (df_questionnaires['type'] == 'MultyOptionsQuestion') & (df_questionnaires['is_linked'] == True)
-    list_mask = (df_questionnaires['type'] == 'TextListQuestion')
-    gps_mask = (df_questionnaires['type'] == 'GpsCoordinateQuestion')
+    if df_questionnaires.empty is False:
+        unlinked_mask = (df_questionnaires["qtype"] == 'MultyOptionsQuestion') & (
+                df_questionnaires['is_linked'] == False)
+        linked_mask = (df_questionnaires["qtype"] == 'MultyOptionsQuestion') & (df_questionnaires['is_linked'] == True)
+        list_mask = (df_questionnaires["qtype"] == 'TextListQuestion')
+        gps_mask = (df_questionnaires["qtype"] == 'GpsCoordinateQuestion')
 
-    # extract multi/list question lists from conditions
-    multi_unlinked_vars = df_questionnaires.loc[unlinked_mask, 'variable_name'].tolist()
-    multi_linked_vars = df_questionnaires.loc[linked_mask, 'variable_name'].tolist()
-    list_vars = df_questionnaires.loc[list_mask, 'variable_name'].tolist()
-    gps_vars = df_questionnaires.loc[gps_mask, 'variable_name'].tolist()
+        # extract multi/list question lists from conditions
+        multi_unlinked_vars = df_questionnaires.loc[unlinked_mask, 'variable_name'].tolist()
+        multi_linked_vars = df_questionnaires.loc[linked_mask, 'variable_name'].tolist()
+        list_vars = df_questionnaires.loc[list_mask, 'variable_name'].tolist()
+        gps_vars = df_questionnaires.loc[gps_mask, 'variable_name'].tolist()
 
     # Iterate over each file
     all_dfs = []
     for file_name in file_names:
-        file_path = os.path.join(s_path, file_name)
-        if file_name.endswith('.dta'):
-            try:
-                with fs_open(file_path, mode='rb', **config) as f:
-                    df = pd.read_stata(f, convert_categoricals=False, convert_missing=True)
-                # Manage missing values
-                df = df.where(df.astype(str) != '.a', -999999999)  # replace '.a' with -999999999 to match tabular export
-                df = df.where(df.astype(str) != '.', np.nan)  # replace '.' with np.nan
-            except Exception as e:
-                print(f"Error reading {file_path}: {e}")
-                continue
-        else:
-            with fs_open(file_path, **config) as f:
-                df = pd.read_csv(f, delimiter='\t')
 
+        df = read_microdata_files(s_path, file_name, **config)
         # drop system-generated columns
         df.drop(columns=[col for col in drop_list if col in df.columns], inplace=True)
 
         # transform multi/list questions
-        df = transform_multi(df, multi_unlinked_vars, 'unlinked')
-        df = transform_multi(df, multi_linked_vars, 'linked')
-        df = transform_multi(df, list_vars, 'list')
-        df = transform_multi(df, gps_vars, 'gps')
+        if df_questionnaires.empty is False:
+            df = transform_multi(df, multi_unlinked_vars, 'unlinked')
+            df = transform_multi(df, multi_linked_vars, 'linked')
+            df = transform_multi(df, list_vars, 'list')
+            df = transform_multi(df, gps_vars, 'gps')
 
         # create roster_level from __id columns if on roster level, else '' if main questionnaire file
         roster_ids = [col for col in df.columns if col.endswith("__id") and col != "interview__id"]
@@ -237,6 +249,9 @@ def get_microdata(s_path, df_questionnaires, s_name, s_version, **config):
 
     # Normalize columns
     combined_df.columns = [normalize_column_name(c) for c in combined_df.columns]
+
+    # Set value column to string for type compatibility
+    combined_df['value'] = combined_df['value'].astype(str)
     return combined_df
 
 
@@ -249,7 +264,7 @@ def read_json_questionaire(survey_path, config):
 
 def read_paradata(survey_path, delimiter='\t', **config):
     file_path = os.path.join(survey_path, 'paradata.tab')
-    with fs_open(file_path, config, mode='r') as f:
+    with fs_open(file_path, **config, mode='r') as f:
         df = pd.read_csv(f, delimiter=delimiter)
     return df
 
@@ -314,7 +329,7 @@ def get_paradata(s_path, df_questionnaires, s_name, s_version, **kwargs):
     df_para (DataFrame): A processed DataFrame containing the merged data from the paradata file and the questionnaire DataFrame.
 
     """
-    df_para = read_paradata(s_path, delimiter='\t')
+    df_para = read_paradata(s_path, delimiter='\t', **kwargs)
 
     # split the parameter column, first from the left, then from the right to avoid potential data entry issues
     df_para[['param', 'answer']] = df_para['parameters'].str.split('\|\|', n=1, expand=True)
@@ -332,7 +347,7 @@ def get_paradata(s_path, df_questionnaires, s_name, s_version, **kwargs):
 
     #Merge with questionnaire data
     if df_questionnaires.empty is False:
-        q_columns = ['qnr_seq', 'variable_name', 'type', 'question_type',
+        q_columns = ['qnr_seq', 'variable_name', "qtype", 'question_type',
                      'answers', 'question_scope',
                      'yes_no_view', 'is_filtered_combobox',
                      'is_integer', 'cascade_from_question_id',
@@ -347,7 +362,7 @@ def get_paradata(s_path, df_questionnaires, s_name, s_version, **kwargs):
     return df_para
 
 
-def get_dataframes(file_dict, source_path, dest_path, config, save_to_disk=True, reload=False):
+def get_dataframes(survey_info, source_path, dest_path, config, save_to_disk=True, reload=False):
     """
     Returns dataframes of the paradata, questionnaires, and microdata.
 
@@ -361,7 +376,7 @@ def get_dataframes(file_dict, source_path, dest_path, config, save_to_disk=True,
     dfs_paradata = []
     dfs_questionnaires = []
     dfs_microdata = []
-    for survey_name, survey in file_dict.items():
+    for survey_name, survey in survey_info.items():
 
         for survey_version, files in survey.items():
             survey_source_path = os.path.join(source_path, survey_name, survey_version)
@@ -438,7 +453,7 @@ def extract_zip(file_source_path, file_dest_path, **config):
         print(f'Error: {e}')
 
 
-def extract_survey(file_dict, file_dest_path, **config):
+def extract_survey(survey_info, file_dest_path, **config):
     """
     Extracts the contents of the zip files to a target directory.
 
@@ -450,7 +465,7 @@ def extract_survey(file_dict, file_dest_path, **config):
 
     if extract:
         fs_mkrdir(file_dest_path, **config)
-        for survey_name, survey in file_dict.items():
+        for survey_name, survey in survey_info.items():
             target_dir = os.path.join(file_dest_path, survey_name)
 
             if overwrite_dir and fs_exists(target_dir):

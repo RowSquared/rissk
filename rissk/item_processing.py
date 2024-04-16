@@ -330,7 +330,7 @@ class ItemFeatureProcessing(FeatureProcessing):
         feature_name = 'f__single_question'
         score_name = self.rename_feature(feature_name)
 
-        single_question_mask = ((self.df_item['type'] == 'SingleQuestion')
+        single_question_mask = ((self.df_item["qtype"] == 'SingleQuestion')
                                 & (self.df_item['n_answers'] > 1)
                                 & (self.df_item['is_filtered_combobox'] == False)
                                 & (pd.isnull(self.df_item['cascade_from_question_id'])))
@@ -365,7 +365,7 @@ class ItemFeatureProcessing(FeatureProcessing):
 
         score_name = self.rename_feature(feature_name)
 
-        multi_question_mask = (self.df_item['type'] == 'MultyOptionsQuestion').copy()
+        multi_question_mask = (self.df_item["qtype"] == 'MultyOptionsQuestion').copy()
 
         df = self.df_item[multi_question_mask].copy()
         # Select only those variables that have at least three distinct values and more than one hundred records
