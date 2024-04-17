@@ -89,7 +89,7 @@ def get_survey_info(root_path, survey_names, survey_version, config):
     return survey_info
 
 
-def load_dataframes(processed_data_path, config):
+def load_dataframes(processed_data_path, **config):
     file_path = os.path.join(processed_data_path, 'questionnaire.parquet')
     with fs_open(file_path, mode='rb', **config) as f:
         df_questionnaire = pd.read_parquet(f)
@@ -108,13 +108,11 @@ def load_dataframes(processed_data_path, config):
 def save_parquet(df, file_path, **config):
     with fs_open(file_path, **config, mode='wb') as f:
         if 'answer_sequence' in df.columns:
-            schema = pa.schema([pa.field('answer_sequence', pa.list_(pa.int64()))])
-            df.to_parquet(f, schema=schema)
-        else:
-            df.to_parquet(f)
+            df['answer_sequence'] = df['answer_sequence'].apply(str)
+        df.to_parquet(f)
 
 
-def save_dataframes(df_paradata, df_questionnaires, df_microdata, processed_data_path, config):
+def save_dataframes(df_paradata, df_questionnaires, df_microdata, processed_data_path, **config):
     # Create directory if it doesn't exist
     fs_mkrdir(processed_data_path, **config)
 
@@ -123,7 +121,7 @@ def save_dataframes(df_paradata, df_questionnaires, df_microdata, processed_data
     save_parquet(df_microdata, os.path.join(processed_data_path, 'microdata.parquet'), **config)
 
 
-def get_data(s_path, s_name, s_version, config):
+def get_data(s_path, s_name, s_version, **config):
     """
     This function wraps up the entire process of data extraction from the survey files.
     It calls the get_questionaire, get_paradata, and get_microdata functions in sequence,
@@ -410,13 +408,13 @@ def get_dataframes(survey_info, source_path, dest_path, config, save_to_disk=Tru
             survey_source_path = os.path.join(source_path, survey_name, survey_version)
             survey_dest_path = os.path.join(dest_path, survey_name, survey_version)
             print(f"Improting from {survey_source_path} to {survey_dest_path})")
-            if reload is False and os.path.isdir(survey_dest_path):
-                df_paradata, df_questionnaires, df_microdata = load_dataframes(survey_dest_path, config)
+            if reload is False and fs_isdir(survey_dest_path):
+                df_paradata, df_questionnaires, df_microdata = load_dataframes(survey_dest_path, **config)
             else:
                 df_paradata, df_questionnaires, df_microdata = get_data(survey_source_path, survey_name, survey_version,
-                                                                        config)
+                                                                        **config)
                 if save_to_disk:
-                    save_dataframes(df_paradata, df_questionnaires, df_microdata, survey_dest_path, config)
+                    save_dataframes(df_paradata, df_questionnaires, df_microdata, survey_dest_path, **config)
 
             print(f"{survey_name} with version {survey_version} loaded. "
                   f"\n"

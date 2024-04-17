@@ -4,20 +4,34 @@ from rissk.utils.import_utils import *
 
 class FeatureProcessing(object):
 
-    def __init__(self, config):
+    def __init__(self, survey_info, config):
 
-        self.config = config = {k:v for k,v in config.items()}
+        #self.config = config = {k:v for k,v in config.items()}
 
-        if self.config.get('password'):
-            self.config['password'] = self.config['password'].encode()
+        self._reload = self.config['environment']['reload']
+        self._save_to_disk = self.config['environment']['save_to_disk']
 
-        file_dict = get_survey_info(config)
-        extraction_path = self.config['environment']['data']['raw']
-        extract_survey(file_dict, extraction_path, **config)
-        dest_path = self.config['environment']['data']['processed']
-        paradata, questionaire, microdata = get_dataframes(file_dict, extraction_path, dest_path, config,
-                                                                      reload=self.config['environment']['reload'],
-                                                                      save_to_disk=self.config['environment']['save_to_disk'])
+        self._source_path  = self.config['environment']['data']['externals']
+        self._raw_path  = self.config['environment']['data']['raw']
+        self._processed_path  = self.config['environment']['data']['processed']
+        self._final_path  = self.config['environment']['data']['final']
+
+        self._limit_unit = self.config['limit_unit']
+
+        self._survey_names = self.config['surveys']
+        self._survey_version = self.config['survey_version']
+
+
+
+        if self.config.get('zip_password'):
+            self.zip_password = self.config['password'].encode()
+
+        survey_info = get_survey_info(config)
+
+
+        paradata, questionaire, microdata = get_dataframes(survey_info, self._raw_path, self._processed_path, config,
+                                                                      reload=self._reload,
+                                                                      save_to_disk=self._save_to_disk)
 
         print('Data Loaded')
         self._allowed_features = ['f__' + k for k, v in config['features'].items() if v['use']]
@@ -97,14 +111,14 @@ class FeatureProcessing(object):
 
     @property
     def df_microdata(self):
-        paradata, questionaire, microdata = self.get_dataframes(reload=self.config['environment']['reload'],
-                                                                save_to_disk=self.config['environment']['save_to_disk'])
+        paradata, questionaire, microdata = self.get_dataframes(reload=self._reload,
+                                                                save_to_disk=self._save_to_disk)
         return microdata
 
     @property
     def df_questionaire(self):
-        paradata, questionaire, microdata = self.get_dataframes(reload=self.config['environment']['reload'],
-                                                                save_to_disk=self.config['environment']['save_to_disk'])
+        paradata, questionaire, microdata = self.get_dataframes(reload=self._reload,
+                                                                save_to_disk=self._save_to_disk)
         return questionaire
 
     def make_index_col(self, df):
@@ -272,11 +286,11 @@ class FeatureProcessing(object):
         return paradata
 
     def filter_by_consent(self, paradata):
-        if self.config['limit_unit'] is not None:
-            consent_variable = next(iter(self.config['limit_unit']))  # Get the first (and only) key in the dictionary
+        if self._limit_unit is not None:
+            consent_variable = next(iter(self._limit_unit))  # Get the first (and only) key in the dictionary
             # Careful! Answer value is a string in paradata.
             # Therefore also consent_value must be set to a string.
-            consent_value = str(self.config['limit_unit'][consent_variable])
+            consent_value = str(self._limit_unit[consent_variable])
 
             cond1 = (paradata['variable_name'] == consent_variable)
             cond2 = (paradata['answer'] == consent_value)
@@ -303,8 +317,8 @@ class FeatureProcessing(object):
 
     def save_data(self, df, file_name):
 
-        target_dir = os.path.join(self.config['environment']['data']['raw'], self.config.surveys)
-        survey_path = os.path.join(target_dir, self.config.survey_version)
+        target_dir = os.path.join(self._raw_path, self._survey_names)
+        survey_path = os.path.join(target_dir, self._survey_version)
         processed_data_path = os.path.join(survey_path, 'processed_data')
         df.to_pickle(os.path.join(processed_data_path, f'{file_name}.pkl'))
 
