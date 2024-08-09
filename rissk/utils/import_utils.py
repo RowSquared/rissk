@@ -4,12 +4,125 @@ import pyarrow as pa
 import pandas as pd
 import zipfile
 from io import BytesIO
+from loguru import logger
+from pathlib import Path
+import re
+from typing import List, Optional
 from rissk.utils.file_manager_utils import *
 from rissk.utils.file_process_utils import (get_file_parts, transform_multi,
-                                            set_survey_name_version, normalize_column_name,
+                                            set_questionaire_version, normalize_column_name,
                                             process_json_structure, get_categories,
                                             update_df_categories)
 
+
+
+# Paths
+PROJ_ROOT = Path(__file__).resolve().parents[1]
+logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
+
+def get_zip_files(data_dir: Path, survey: str, questionaire: List[str], versions: List[int]) -> List[Path]:
+    """
+    Retrieves a list of zip files from the specified directory that match the given pattern.
+
+    Parameters:
+    - data_dir (Path): The directory to search for zip files.
+    - survey (str): The survey name to match in the file names.
+    - questionaire (List[str]): A list of project names to match in the file names.
+    - versions (List[int]): A list of versions to match in the file names.
+
+    Returns:
+    - List[Path]: A list of matching zip file paths.
+    """
+    # Compile a regex pattern for matching files
+    questionaire_pattern = "|".join(map(str, questionaire))
+    version_pattern = "|".join(map(str, versions))
+    pattern = re.compile(rf"{survey}_({questionaire_pattern})_({version_pattern})_.*\.zip")
+
+    # List and filter files in the specified directory
+    matching_files = [
+        file_path
+        for file_path in data_dir.iterdir()
+        if pattern.match(file_path.name)
+    ]
+    
+    return matching_files
+
+
+def extract_zip(file_source_path: Path, file_dest_path: Path):
+    """
+    Extracts a zip file to the specified destination path.
+    If nested zip files are encountered, they are extracted recursively.
+    
+    Parameters:
+    - file_source_path (Path): Path to the source zip file.
+    - file_dest_path (Path): Destination directory where files will be extracted.
+    """
+    password = os.getenv('PASSWORD', None)
+    
+    try:
+        with file_source_path.open(mode='rb') as f:
+            zip_data = BytesIO(f.read())
+        
+        with zipfile.ZipFile(zip_data) as zip_ref:
+            for file_info in zip_ref.infolist():
+                file_name = file_info.filename
+                file_path = file_dest_path / file_name
+                
+                if file_info.is_dir():
+                    file_path.mkdir(parents=True, exist_ok=True)
+                else:
+                    extracted_data = zip_ref.read(file_name, pwd=password.encode() if password else None)
+                    if file_name.endswith('.zip'):
+                        nested_dir = file_path.with_suffix('')
+                        nested_dir.mkdir(parents=True, exist_ok=True)
+                        nested_zip_path = nested_dir / file_path.name
+                        with nested_zip_path.open(mode='wb') as nested_f:
+                            nested_f.write(extracted_data)
+                        extract_zip(nested_zip_path, nested_dir)  # Recursively extract nested zip file
+                    else:
+                        file_path.parent.mkdir(parents=True, exist_ok=True)
+                        with file_path.open(mode='wb') as extracted_f:
+                            extracted_f.write(extracted_data)
+        
+        logger.info(f'Zip file {file_source_path} extracted successfully to {file_dest_path}')
+    except zipfile.BadZipFile:
+        logger.error(f'Error: The file {file_source_path} is not a zip file or it is corrupted.')
+    except RuntimeError as e:
+        logger.error(f'Error: A runtime error occurred - {e}')
+    except Exception as e:
+        logger.error(f'An unexpected error occurred: {e}')
+
+def get_from_dir(dir_name, info='version'):
+    """
+    Extract information from a directory name formatted as '<SURVEY>_<PROJECT>_<VERSION>_<ANY RANDOM NAME>'.
+
+    Parameters:
+    dir_name (str): The directory name to parse.
+    info (str): The type of information to extract ('survey', 'project', 'version').
+
+    Returns:
+    str: The extracted information.
+
+    Raises:
+    ValueError: If the info parameter is not one of 'survey', 'project', 'version'.
+    IndexError: If the directory name does not have the expected format.
+    """
+    # Map info to the corresponding index
+    info_index = {
+        'survey': 0,
+        'project': 1,
+        'version': 2
+    }
+
+    if info not in info_index:
+        raise ValueError("info parameter must be one of 'survey', 'project', 'version'")
+
+    parts = dir_name.split('_')
+    
+    if len(parts) < 3:
+        raise IndexError("Directory name does not have the expected format '<SURVEY>_<PROJECT>_<VERSION>_<ANY RANDOM NAME>'")
+
+    return parts[info_index[info]]
 
 def assign_type(df, dtypes):
     for column in dtypes.index:
@@ -17,136 +130,34 @@ def assign_type(df, dtypes):
     return df
 
 
-def get_import_path(path, survey_names, **kwargs):
-    available_surveys = fs_listdir(path, **kwargs)
-
-    if survey_names == 'all':
-        return available_surveys
-
-    import_path = [survey for survey in survey_names if survey in available_surveys]
-
-    if not import_path:
-        raise ValueError(f"ERROR: survey path {path} does not exists")
-
-    return import_path
-
-
-def update_survey_info(survey_info, surveys, survey_version):
-    """
-    Update the file dictionary based on the surveys specified in the config.
-    """
-
-    if surveys != 'all':
-        if survey_version is None:
-            if len(survey_info[surveys[0]]) > 1:
-                raise ValueError(f"There are multiple versions in {surveys}. "
-                                 f"Either specify survey_version=all in python main.py i.e. \n"
-                                 f"python main.py export_path={surveys} survey_version=all "
-                                 f"\n OR provide a path with only one version.")
-        elif survey_version == 'all':
-            survey_info = {survey: survey_data for survey, survey_data in survey_info.items() if
-                           survey in surveys}
-        else:
-            survey_info = {k: {nk: v for nk, v in nested_dict.items() if nk in survey_version} for
-                           k, nested_dict in survey_info.items() if k in surveys}
-    return survey_info
-
-
-def get_survey_info(root_path, survey_names, survey_version, config):
-    """
-    Get a dictionary with all zip files from the surveys defined in the config.
-    """
-    # Get a dictionary with all zip files from the surveys defined in config
+def get_survey_info(survey_files):
 
     survey_info = {}
 
-    #root_path = config['environment']['data']['externals']
-    #survey_names = config['surveys']
-    #survey_version = config['survey_version']
+    for survey_path in survey_files:
+        filename = survey_path.name
+        questionnaire, version, file_format, interview_status = get_file_parts(filename)
+        questionnaire_version = f"{questionnaire}_{str(version)}"  
 
-    import_path = get_import_path(root_path, survey_names, **config)
-
-    for survey_name in import_path:
-        if os.path.isdir(os.path.join(root_path, survey_name)):
-            survey_info[survey_name] = survey_info.get(survey_name, {})
-
-            survey_path = os.path.join(root_path, survey_name)
-            for filename in fs_listdir(survey_path, config):
-                if filename.endswith('.zip'):
-
-                    try:
-                        questionnaire, version, file_format, interview_status = get_file_parts(filename)
-                        q_name = f"{questionnaire}_{str(version)}"
-                        survey_info[survey_name][q_name] = survey_info[survey_name].get(q_name, {
-                            'file_path': survey_path})
-                        survey_info[survey_name][q_name][file_format] = filename
-                    except ValueError:
-                        print(f"WARNING: Survey {survey_name} with version filename {filename} Skipped")
-    # Filter out folders without ZIP files.
-    survey_info = {k: v for k, v in survey_info.items() if len(v) > 0}
-
-    survey_info = update_survey_info(survey_info, survey_names, survey_version)
+        survey_info[questionnaire] = survey_info.get(questionnaire, {})
+        survey_info[questionnaire][questionnaire_version] = survey_info[questionnaire].get(questionnaire_version, {})
+        survey_info[questionnaire][questionnaire_version][file_format] = survey_path
     return survey_info
 
 
-def load_dataframes(processed_data_path, **config):
-    file_path = os.path.join(processed_data_path, 'questionnaire.parquet')
-    with fs_open(file_path, mode='rb', **config) as f:
-        df_questionnaire = pd.read_parquet(f)
 
-    file_path = os.path.join(processed_data_path, 'paradata.parquet')
-    with fs_open(file_path, mode='rb', **config) as f:
-        df_paradata = pd.read_parquet(f)
-
-    file_path = os.path.join(processed_data_path, 'microdata.parquet')
-    with fs_open(file_path, mode='rb', **config) as f:
-        df_microdata = pd.read_parquet(f)
-
-    return df_paradata, df_questionnaire, df_microdata
-
-
-def save_parquet(df, file_path, **config):
-    with fs_open(file_path, **config, mode='wb') as f:
+def save_parquet(df, file_path):
+    with open(file_path, 'wb') as f:
         if 'answer_sequence' in df.columns:
             df['answer_sequence'] = df['answer_sequence'].apply(str)
         df.to_parquet(f)
 
 
-def save_dataframes(df_paradata, df_questionnaires, df_microdata, processed_data_path, **config):
-    # Create directory if it doesn't exist
-    fs_mkrdir(processed_data_path, **config)
-
-    save_parquet(df_questionnaires, os.path.join(processed_data_path, 'questionnaire.parquet'), **config)
-    save_parquet(df_paradata, os.path.join(processed_data_path, 'paradata.parquet'), **config)
-    save_parquet(df_microdata, os.path.join(processed_data_path, 'microdata.parquet'), **config)
-
-
-def get_data(s_path, s_name, s_version, **config):
-    """
-    This function wraps up the entire process of data extraction from the survey files.
-    It calls the get_questionaire, get_paradata, and get_microdata functions in sequence,
-    each one with its corresponding arguments.
-
-    Parameters:
-    survey_path (str): The directory path where the survey files are located.
-
-    Returns:
-    df_paradata (DataFrame): The DataFrame containing all the paradata.
-    df_questionnaires (DataFrame): DataFrame containing information about the questionnaire used for the survey.
-    df_microdata (DataFrame): The DataFrame containing all the microdata (survey responses).
-    """
-    df_questionnaires = get_questionaire(s_path, s_name, s_version, **config)
-    df_paradata = get_paradata(s_path, df_questionnaires, s_name, s_version, **config)
-    df_microdata = get_microdata(s_path, df_questionnaires, s_name, s_version, **config)
-
-    return df_paradata, df_questionnaires, df_microdata
-
-
-def read_microdata_files(s_path, file_name, **config):
+def read_microdata_files(s_path, file_name):
     file_path = os.path.join(s_path, file_name)
     if file_name.endswith('.dta'):
         try:
-            with fs_open(file_path, mode='rb', **config) as f:
+            with open(file_path, 'rb') as f:
                 df = pd.read_stata(f, convert_categoricals=False, convert_missing=True)
             # Manage missing values
             df = df.where(df.astype(str) != '.a', -999999999)  # replace '.a' with -999999999 to match tabular export
@@ -154,26 +165,37 @@ def read_microdata_files(s_path, file_name, **config):
         except Exception as e:
             print(f"Error reading {file_path}: {e}")
     else:
-        with fs_open(file_path, **config) as f:
+        with open(file_path) as f:
             df = pd.read_csv(f, delimiter='\t')
     return df
 
 
-def get_microdata_file_list(s_path, **config):
-    file_names = []
+def get_microdata_file_list(data_path: Path) -> List[str]:
+    """
+    Get a list of microdata files in the specified directory, excluding certain files and extensions.
+
+    Parameters:
+    data_path (Path): The directory path to search for files.
+
+    Returns:
+    List[str]: A list of file names that match the criteria.
+    """
     excluded_files = ('interview__', 'assignment__', 'paradata.tab')
     excluded_extensions = ('.dta', '.tab')
-    for file in fs_listdir(s_path, **config):
-        base_name = os.path.basename(file)
-        if base_name.endswith(excluded_extensions) and not base_name.startswith(excluded_files):
-            file_names.append(base_name)
+
+    # List comprehension to filter files
+    file_names = [
+        file.name for file in data_path.iterdir()
+        if file.is_file() and file.suffix in excluded_extensions and not any(file.name.startswith(prefix) for prefix in excluded_files)
+    ]
+
     return file_names
 
 
-def get_microdata(s_path, df_questionnaires, s_name, s_version, **config):
+def get_microdata(data_path, df_questionnaires):
     drop_list = ['interview__key', 'sssys_irnd', 'has__errors', 'interview__status', 'assignment__id']
 
-    file_names = get_microdata_file_list(s_path, **config)
+    file_names = get_microdata_file_list(data_path)
 
     # define multi/list question conditions
     if df_questionnaires.empty is False:
@@ -193,7 +215,7 @@ def get_microdata(s_path, df_questionnaires, s_name, s_version, **config):
     all_dfs = []
     for file_name in file_names:
 
-        df = read_microdata_files(s_path, file_name, **config)
+        df = read_microdata_files(data_path, file_name)
         # drop system-generated columns
         df.drop(columns=[col for col in drop_list if col in df.columns], inplace=True)
 
@@ -234,13 +256,17 @@ def get_microdata(s_path, df_questionnaires, s_name, s_version, **config):
     # Keep rows where the 'value' column passes the is_valid check
     combined_df = combined_df[combined_df['value'].apply(is_valid)]
 
-    combined_df = set_survey_name_version(combined_df, s_name, s_version)
+
+    project_name = get_from_dir(data_path.name, 'project')
+    project_version = get_from_dir(data_path.name, 'version')
+    combined_df = set_questionaire_version(combined_df, project_name, project_version)
+
     # Manage the case questionnaires are not available for the survey
     if df_questionnaires.empty is False:
         roster_columns = [c for c in combined_df.columns if '__id' in c and c != 'interview__id']
         combined_df = combined_df.merge(df_questionnaires, how='left',
-                                        left_on=['variable', 'survey_name', 'survey_version'],
-                                        right_on=['variable_name', 'survey_name', 'survey_version']).sort_values(
+                                        left_on=['variable', 'survey_questionaire', 'questionaire_version'],
+                                        right_on=['variable_name', 'survey_questionaire', 'questionaire_version']).sort_values(
             ['interview__id', 'qnr_seq'] + roster_columns)
 
     combined_df.reset_index(drop=True, inplace=True)
@@ -253,9 +279,9 @@ def get_microdata(s_path, df_questionnaires, s_name, s_version, **config):
     return combined_df
 
 
-def get_questionaire_map(raw_path, **config):
+def get_questionaire_map(raw_path):
     questionaire_map = {}
-    questionaire_list = fs_listdir(raw_path, key=config['key'], secret=config['secret'], is_local=False)
+    questionaire_list = os.listdir(raw_path)
     for questionaire in questionaire_list:
         if questionaire.endswith('.json'):
             file_name = os.path.basename(questionaire)
@@ -269,45 +295,44 @@ def get_questionaire_map(raw_path, **config):
     return questionaire_map
 
 
-def get_questionaire_id(extracted_path, **config):
+def get_questionaire_id(extracted_path):
     file_path = os.path.join(extracted_path, 'export__info.json')
-    with fs_open(file_path, **config, mode='r') as f:
+    with open(file_path, mode='r') as f:
         data = json.load(f)
     return data.get('QuestionnaireId').split("$")[0]
 
 
-def read_json_questionaire(survey_path, questionaire_path=None, **config):
+def read_json_questionaire(survey_path, questionaire_path=None):
     if questionaire_path is None:
         file_path = os.path.join(survey_path, 'Questionnaire/content/document.json')
     else:
-        questionaire_id = get_questionaire_id(survey_path, **config)
-        questionaire_map = get_questionaire_map(questionaire_path, **config)
+        questionaire_id = get_questionaire_id(survey_path)
+        questionaire_map = get_questionaire_map(questionaire_path)
         file_path = questionaire_map.get(questionaire_id).get('file_path')
-    with fs_open(file_path, **config, mode='r') as f:
+    with open(file_path, 'r') as f:
         data = json.load(f)
     return data
 
 
-def read_paradata(survey_path, delimiter='\t', **config):
+def read_paradata(survey_path, delimiter='\t'):
     file_path = os.path.join(survey_path, 'paradata.tab')
-    with fs_open(file_path, **config, mode='r') as f:
+    with open(file_path, 'r') as f:
         df = pd.read_csv(f, delimiter=delimiter)
     return df
 
-
-def get_questionaire(s_path, s_name, s_version, questionaire_path=None, **config):
+def get_questionaire(data_path: Path, questionaire_path: Optional[Path] = None) -> pd.DataFrame:
     """
     This function loads and processes a questionnaire from a JSON file located at the specified path.
     It also handles the categorization of the data.
 
     Parameters:
-    survey_path (str): The path to the directory containing the questionnaire and categories data.
+    data_path (Path): The path to the directory containing the questionnaire and categories data.
+    questionaire_path (Optional[Path]): The path to the questionnaire JSON file.
 
     Returns:
-    qnr_df (DataFrame): A processed DataFrame containing the questionnaire data.
-
+    pd.DataFrame: A processed DataFrame containing the questionnaire data.
     """
-    q_data = read_json_questionaire(s_path, questionaire_path=questionaire_path, **config)
+    q_data = read_json_questionaire(data_path, questionaire_path=questionaire_path)
 
     qnr_df = pd.DataFrame()
 
@@ -329,20 +354,24 @@ def get_questionaire(s_path, s_name, s_version, questionaire_path=None, **config
         qmask = qnr_df['QuestionScope'] == 0
         qnr_df['question_sequence'] = qmask.cumsum()
         qnr_df.loc[~qmask, 'question_sequence'] = None
-    categories_path = os.path.join(s_path, 'Questionnaire/content/Categories')
+        
+    categories_path = data_path / 'Questionnaire' / 'content' / 'Categories'
 
-    if fs_exists(categories_path):
+    if categories_path.exists():
         categories = get_categories(categories_path)
         qnr_df = qnr_df.apply(lambda row: update_df_categories(row, categories), axis=1)
 
     qnr_df.reset_index(drop=True, inplace=True)
     # Normalize columns
     qnr_df.columns = [normalize_column_name(c) for c in qnr_df.columns]
-    qnr_df = set_survey_name_version(qnr_df, s_name, s_version)
+
+    project_name = get_from_dir(data_path.name, 'project')
+    project_version = get_from_dir(data_path.name, 'version')
+    qnr_df = set_questionaire_version(qnr_df, project_name, project_version)
     return qnr_df
 
 
-def get_paradata(s_path, df_questionnaires, s_name, s_version, **kwargs):
+def get_paradata(data_path, df_questionnaires):
     """
     This function loads and processes a paradata file from the provided path and merges it with the questionnaire dataframe.
     The function also generates a date-time column from the timestamp and marks whether the answer has changed.
@@ -355,7 +384,7 @@ def get_paradata(s_path, df_questionnaires, s_name, s_version, **kwargs):
     df_para (DataFrame): A processed DataFrame containing the merged data from the paradata file and the questionnaire DataFrame.
 
     """
-    df_para = read_paradata(s_path, delimiter='\t', **kwargs)
+    df_para = read_paradata(data_path, delimiter='\t')
 
     # split the parameter column, first from the left, then from the right to avoid potential data entry issues
     df_para[['param', 'answer']] = df_para['parameters'].str.split('\|\|', n=1, expand=True)
@@ -369,7 +398,11 @@ def get_paradata(s_path, df_questionnaires, s_name, s_version, **kwargs):
     # Adjust the date column by the timezone offset
     df_para['timestamp_local'] = df_para['timestamp_utc'] + df_para['tz_offset']
 
-    df_para = set_survey_name_version(df_para, s_name, s_version)
+
+    project_name = get_from_dir(data_path.name, 'project')
+    project_version = get_from_dir(data_path.name, 'version')
+
+    df_para = set_questionaire_version(df_para, project_name, project_version)
 
     #Merge with questionnaire data
     if df_questionnaires.empty is False:
@@ -378,17 +411,17 @@ def get_paradata(s_path, df_questionnaires, s_name, s_version, **kwargs):
                      'yes_no_view', 'is_filtered_combobox',
                      'is_integer', 'cascade_from_question_id',
                      'answer_sequence', 'n_answers', 'question_sequence',
-                     'survey_name', 'survey_version']
+                     'survey_questionaire', 'questionaire_version']
         df_para = df_para.merge(df_questionnaires[q_columns], how='left',
-                                left_on=['param', 'survey_name', 'survey_version'],
-                                right_on=['variable_name', 'survey_name', 'survey_version'])
+                                left_on=['param', 'survey_questionaire', 'questionaire_version'],
+                                right_on=['variable_name', 'survey_questionaire', 'questionaire_version'])
 
     # Normalize column names
     df_para.columns = [normalize_column_name(c) for c in df_para.columns]
     return df_para
 
 
-def get_dataframes(survey_info, source_path, dest_path, config, save_to_disk=True, reload=False):
+def get_dataframes(survey_info):
     """
     Returns dataframes of the paradata, questionnaires, and microdata.
 
@@ -402,26 +435,21 @@ def get_dataframes(survey_info, source_path, dest_path, config, save_to_disk=Tru
     dfs_paradata = []
     dfs_questionnaires = []
     dfs_microdata = []
-    for survey_name, survey in survey_info.items():
+    for survey_questionnaire, questionnaires_details in survey_info.items():
+        for questionnaires_version, file_paths in questionnaires_details.items():
+            tabular_path  = file_paths['Tabular']
+            paradata_path  = file_paths['Paradata']
 
-        for survey_version, files in survey.items():
-            survey_source_path = os.path.join(source_path, survey_name, survey_version)
-            survey_dest_path = os.path.join(dest_path, survey_name, survey_version)
-            print(f"Improting from {survey_source_path} to {survey_dest_path})")
-            if reload is False and fs_isdir(survey_dest_path):
-                df_paradata, df_questionnaires, df_microdata = load_dataframes(survey_dest_path, **config)
-            else:
-                df_paradata, df_questionnaires, df_microdata = get_data(survey_source_path, survey_name, survey_version,
-                                                                        **config)
-                if save_to_disk:
-                    save_dataframes(df_paradata, df_questionnaires, df_microdata, survey_dest_path, **config)
+            df_questionnaires = get_questionaire(tabular_path)
+            df_paradata = get_paradata(paradata_path, df_questionnaires)
+            df_microdata = get_microdata(tabular_path, df_questionnaires)
 
-            print(f"{survey_name} with version {survey_version} loaded. "
-                  f"\n"
-                  f"Paradata shape: {df_paradata.shape} "
-                  f"Questionnaires shape: {df_questionnaires.shape} "
-                  f"Microdata shape: {df_microdata.shape} "
-                  )
+
+            logger.info(f"{survey_questionnaire} with version {questionnaires_version} loaded. "
+                    f"\n"
+                    f"Paradata shape: {df_paradata.shape} "
+                    f"Questionnaires shape: {df_questionnaires.shape} "
+                    f"Microdata shape: {df_microdata.shape} ")
 
             dfs_paradata.append(df_paradata)
             dfs_questionnaires.append(df_questionnaires)
@@ -437,77 +465,4 @@ def get_dataframes(survey_info, source_path, dest_path, config, save_to_disk=Tru
     dfs_microdata.reset_index(drop=True, inplace=True)
 
     return dfs_paradata, dfs_questionnaires, dfs_microdata
-
-
-def extract_zip(file_source_path, file_dest_path, **config):
-    password = config.get('password', None)
-    try:
-        with fs_open(file_source_path, mode='rb', **config) as f:
-            zip_data = BytesIO(f.read())
-
-        with zipfile.ZipFile(zip_data) as zip_ref:
-            for file_info in zip_ref.infolist():
-                file_name = file_info.filename
-                extracted_data = zip_ref.read(file_name, pwd=password.encode() if password else None)
-                file_path = os.path.join(file_dest_path, file_name)
-
-                if os.path.basename(file_name) != file_name and file_name.endswith('.zip') is False:
-                    dir_path = os.path.dirname(file_path)
-                    fs_mkrdir(dir_path, **config)
-                elif file_name.endswith('.zip'):
-                    # Create a new directory for the nested zip file
-                    nested_dir = os.path.splitext(file_path)[0]
-                    fs_mkrdir(nested_dir, **config)
-
-                    # Save the nested zip file
-                    with fs_open(file_path, mode='wb', **config) as f:
-                        f.write(extracted_data)
-
-                    # Recursively extract the nested zip file
-                    extract_zip(file_path, nested_dir, **config)
-                elif file_info.is_dir():
-                    # If it's a directory, recursively call extract_zip on each file in the directory
-                    for nested_file in fs_listdir(file_path, **config):
-                        nested_file_path = os.path.join(file_path, nested_file)
-                        extract_zip(nested_file_path, file_dest_path, **config)
-                else:
-                    with fs_open(file_path, mode='wb', **config) as f:
-                        f.write(extracted_data)
-
-        print(f'Zip file {file_source_path} extracted and extracted files uploaded successfully to {file_dest_path}')
-    except Exception as e:
-        print(f'Error: {e}')
-
-
-def extract_survey(survey_info, file_dest_path, **config):
-    """
-    Extracts the contents of the zip files to a target directory.
-
-    Parameters:
-    overwrite_dir: A boolean indicating whether to overwrite the existing directory.
-    """
-    extract = config.get('extract', True)
-    overwrite_dir = config.get('overwrite_dir', False)
-
-    if extract:
-        fs_mkrdir(file_dest_path, **config)
-        for survey_name, survey in survey_info.items():
-            target_dir = os.path.join(file_dest_path, survey_name)
-
-            if overwrite_dir and fs_exists(target_dir):
-                pass  # shutil.rmtree(target_dir)
-
-            # Create a new target directory if it does not yet exist
-            fs_mkrdir(target_dir, **config)
-
-            for survey_version, files in survey.items():
-                file_path = files['file_path']
-                dest_path = os.path.join(target_dir, survey_version)
-                source_path1 = os.path.join(file_path, files['Paradata'])
-                source_path2 = os.path.join(file_path, files['Tabular'])
-                if overwrite_dir and fs_exists(dest_path):
-                    pass  # shutil.rmtree(dest_path)
-
-                fs_mkrdir(dest_path, **config)
-                extract_zip(source_path1, dest_path, **config)
-                extract_zip(source_path2, dest_path, **config)
+    

@@ -1,11 +1,12 @@
 import os
+from pathlib import Path
 import pandas as pd
-from rissk.utils.file_manager_utils import fs_listdir, fs_open
+from typing import Dict
 
 
-def set_survey_name_version(df, survey_name, survey_version):
-    df['survey_name'] = survey_name
-    df['survey_version'] = survey_version
+def set_questionaire_version(df, survey_project, project_version):
+    df['survey_questionaire'] = survey_project
+    df['questionaire_version'] = project_version
     return df
 
 
@@ -159,29 +160,30 @@ def process_json_structure(children, parent_group_title, counter, question_data)
     return counter
 
 
-def get_categories(directory, **config):
+def get_categories(directory: Path) -> Dict[str, Dict[str, list]]:
     """
     This function retrieves categories from Excel files within a directory.
 
     Parameters:
-    directory (str): The directory where the category Excel files are stored.
+    directory (Path): The directory where the category Excel files are stored.
 
     Returns:
-    dict: A dictionary containing category data. Each key represents a filename, and each value is another dictionary
-    containing 'n_answers' and 'answer_sequence' which represents the number of answers and the sequence of the answer IDs
-    respectively.
-
+    Dict[str, Dict[str, list]]: A dictionary containing category data. Each key represents a filename, and each value is
+    another dictionary containing 'n_answers' and 'answer_sequence' which represents the number of answers and the
+    sequence of the answer IDs respectively.
     """
     categories = {}
 
-    files = [f for f in fs_listdir(directory, **config) if f.endswith('.xlsx') or f.endswith('.xls')]
+    # List all Excel files in the directory
+    files = directory.glob('*.xlsx')  # Finds .xlsx files
+    files = list(files) + list(directory.glob('*.xls'))  # Adds .xls files
+
     for file in files:
-        file_path = os.path.join(directory, file)
-        with fs_open(file_path, **config, mode='r') as f:
-            df = pd.read_excel(f)
+        df = pd.read_excel(file)
         n_answers = df.shape[0]
         answer_sequence = df['id'].tolist()
-        categories[file] = {'n_answers': n_answers, 'answer_sequence': answer_sequence}
+        categories[file.name] = {'n_answers': n_answers, 'answer_sequence': answer_sequence}
+    
     return categories
 
 
@@ -204,8 +206,8 @@ def update_df_categories(row, categories):
 
 
 def get_file_parts(filename):
-    # Remove ".zip" and split by "_"
-    filename_parts = filename[:-4].split("_")
+    # split by "_"
+    filename_parts = filename.split("_")
     if len(filename_parts) < 4:
         raise ValueError(f"ERROR: {filename} Not a valid Survey Solutions export file.")
 
@@ -225,5 +227,3 @@ def get_file_parts(filename):
 
     file_format = file_format if file_format == 'Paradata' else 'Tabular'
     return questionnaire, version, file_format, interview_status
-
-

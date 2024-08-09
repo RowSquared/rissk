@@ -1,0 +1,16 @@
+tasks:
+  - source: pipelines/ingestion/get_dataframes.py
+    name: get_dataframes
+    product:
+      nb: outputs/get_dataframes.ipynb
+      paradata: data/{{SURVEY}}/20_INTERIM/paradata.parquet
+      questionnaire: data/{{SURVEY}}/30_PROCESSED/questionnaire.parquet
+      microdata: data/{{SURVEY}}/30_PROCESSED/microdata.parquet
+  - source: pipelines/feature_engineering/process_paradata.py
+    product:
+      nb: outputs/process_paradata.ipynb
+      paradata: data/{{SURVEY}}/30_PROCESSED/paradata.parquet
+      paradata_active: data/{{SURVEY}}/30_PROCESSED/paradata_active.parquet
+    params:
+      limit_unit: '{{limit_unit}}'
+      

@@ -1,0 +1,27 @@
+name: rissk
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - black
+  - flake8
+  - isort
+  - pip
+  - typer
+  - loguru
+  - tqdm
+  - ipython
+  - jupyterlab
+  - matplotlib
+  - notebook
+  - numpy
+  - pandas
+  - scikit-learn
+  - ploomber
+  - boto3
+  - r-base
+  - r-irkernel
+  - pip:
+    - python-dotenv
+    - awscli
+    - -e .
