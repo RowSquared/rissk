@@ -5,7 +5,7 @@ from typing import Dict
 
 
 def set_questionaire_version(df, survey_project, project_version):
-    df['survey_questionaire'] = survey_project
+    df['qnr'] = survey_project
     df['questionaire_version'] = project_version
     return df
 

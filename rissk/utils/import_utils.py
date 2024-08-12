@@ -7,7 +7,7 @@ from io import BytesIO
 from loguru import logger
 from pathlib import Path
 import re
-from typing import List, Optional
+from typing import List, Dict, Optional
 from rissk.utils.file_manager_utils import *
 from rissk.utils.file_process_utils import (get_file_parts, transform_multi,
                                             set_questionaire_version, normalize_column_name,
@@ -20,30 +20,36 @@ from rissk.utils.file_process_utils import (get_file_parts, transform_multi,
 PROJ_ROOT = Path(__file__).resolve().parents[1]
 logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
 
-def get_zip_files(data_dir: Path, survey: str, questionaire: List[str], versions: List[int]) -> List[Path]:
+def get_zip_files(data_dir: Path, survey: str, questionaires: List[Dict[str, List[int]]]) -> List[Path]:
     """
     Retrieves a list of zip files from the specified directory that match the given pattern.
 
     Parameters:
     - data_dir (Path): The directory to search for zip files.
     - survey (str): The survey name to match in the file names.
-    - questionaire (List[str]): A list of project names to match in the file names.
-    - versions (List[int]): A list of versions to match in the file names.
+    - questionaires (List[Dict[str, List[int]]]): A list of dictionaries, each containing a 
+      'name' of the questionnaire and a 'VERSION' list to match in the file names.
 
     Returns:
     - List[Path]: A list of matching zip file paths.
     """
-    # Compile a regex pattern for matching files
-    questionaire_pattern = "|".join(map(str, questionaire))
-    version_pattern = "|".join(map(str, versions))
-    pattern = re.compile(rf"{survey}_({questionaire_pattern})_({version_pattern})_.*\.zip")
+    matching_files = []
 
-    # List and filter files in the specified directory
-    matching_files = [
-        file_path
-        for file_path in data_dir.iterdir()
-        if pattern.match(file_path.name)
-    ]
+    # Iterate through each questionnaire and its associated versions
+    for questionaire in questionaires:
+        name = questionaire.get('name')
+        versions = questionaire.get('VERSION', [])
+        
+        # Compile a regex pattern for matching files
+        version_pattern = "|".join(map(str, versions))
+        pattern = re.compile(rf"{name}_({version_pattern})_.*\.zip")
+        
+        # List and filter files in the specified directory
+        matching_files.extend(
+            file_path
+            for file_path in data_dir.iterdir()
+            if pattern.match(file_path.name)
+        )
     
     return matching_files
 
@@ -137,11 +143,11 @@ def get_survey_info(survey_files):
     for survey_path in survey_files:
         filename = survey_path.name
         questionnaire, version, file_format, interview_status = get_file_parts(filename)
-        questionnaire_version = f"{questionnaire}_{str(version)}"  
+        qnr_version = f"{questionnaire}_{str(version)}"  
 
         survey_info[questionnaire] = survey_info.get(questionnaire, {})
-        survey_info[questionnaire][questionnaire_version] = survey_info[questionnaire].get(questionnaire_version, {})
-        survey_info[questionnaire][questionnaire_version][file_format] = survey_path
+        survey_info[questionnaire][qnr_version] = survey_info[questionnaire].get(qnr_version, {})
+        survey_info[questionnaire][qnr_version][file_format] = survey_path
     return survey_info
 
 
@@ -265,8 +271,8 @@ def get_microdata(data_path, df_questionnaires):
     if df_questionnaires.empty is False:
         roster_columns = [c for c in combined_df.columns if '__id' in c and c != 'interview__id']
         combined_df = combined_df.merge(df_questionnaires, how='left',
-                                        left_on=['variable', 'survey_questionaire', 'questionaire_version'],
-                                        right_on=['variable_name', 'survey_questionaire', 'questionaire_version']).sort_values(
+                                        left_on=['variable', 'qnr', 'questionaire_version'],
+                                        right_on=['variable_name', 'qnr', 'questionaire_version']).sort_values(
             ['interview__id', 'qnr_seq'] + roster_columns)
 
     combined_df.reset_index(drop=True, inplace=True)
@@ -411,10 +417,10 @@ def get_paradata(data_path, df_questionnaires):
                      'yes_no_view', 'is_filtered_combobox',
                      'is_integer', 'cascade_from_question_id',
                      'answer_sequence', 'n_answers', 'question_sequence',
-                     'survey_questionaire', 'questionaire_version']
+                     'qnr', 'questionaire_version']
         df_para = df_para.merge(df_questionnaires[q_columns], how='left',
-                                left_on=['param', 'survey_questionaire', 'questionaire_version'],
-                                right_on=['variable_name', 'survey_questionaire', 'questionaire_version'])
+                                left_on=['param', 'qnr', 'questionaire_version'],
+                                right_on=['variable_name', 'qnr', 'questionaire_version'])
 
     # Normalize column names
     df_para.columns = [normalize_column_name(c) for c in df_para.columns]
@@ -435,30 +441,48 @@ def get_dataframes(survey_info):
     dfs_paradata = []
     dfs_questionnaires = []
     dfs_microdata = []
+    
     for survey_questionnaire, questionnaires_details in survey_info.items():
         for questionnaires_version, file_paths in questionnaires_details.items():
-            tabular_path  = file_paths['Tabular']
-            paradata_path  = file_paths['Paradata']
+            tabular_path = file_paths['Tabular']
+            paradata_path = file_paths['Paradata']
 
-            df_questionnaires = get_questionaire(tabular_path)
-            df_paradata = get_paradata(paradata_path, df_questionnaires)
-            df_microdata = get_microdata(tabular_path, df_questionnaires)
+            try:
+                df_questionnaires = get_questionaire(tabular_path)
+            except Exception as e:
+                logger.error(f"Failed to load questionnaire for {survey_questionnaire} version {questionnaires_version} from {tabular_path}: {str(e)}")
+                raise
 
+            try:
+                df_paradata = get_paradata(paradata_path, df_questionnaires)
+            except Exception as e:
+                logger.error(f"Failed to load paradata for {survey_questionnaire} version {questionnaires_version} from {paradata_path}: {str(e)}")
+                raise
+
+            try:
+                df_microdata = get_microdata(tabular_path, df_questionnaires)
+            except Exception as e:
+                logger.error(f"Failed to load microdata for {survey_questionnaire} version {questionnaires_version} from {tabular_path}: {str(e)}")
+                raise
 
             logger.info(f"{survey_questionnaire} with version {questionnaires_version} loaded. "
-                    f"\n"
-                    f"Paradata shape: {df_paradata.shape} "
-                    f"Questionnaires shape: {df_questionnaires.shape} "
-                    f"Microdata shape: {df_microdata.shape} ")
+                        f"\n"
+                        f"Paradata shape: {df_paradata.shape} "
+                        f"Questionnaires shape: {df_questionnaires.shape} "
+                        f"Microdata shape: {df_microdata.shape} ")
 
             dfs_paradata.append(df_paradata)
             dfs_questionnaires.append(df_questionnaires)
             dfs_microdata.append(df_microdata)
 
     # create unique dataframe with all surveys
-    dfs_paradata = pd.concat(dfs_paradata)
-    dfs_questionnaires = pd.concat(dfs_questionnaires)
-    dfs_microdata = pd.concat(dfs_microdata)
+    try:
+        dfs_paradata = pd.concat(dfs_paradata)
+        dfs_questionnaires = pd.concat(dfs_questionnaires)
+        dfs_microdata = pd.concat(dfs_microdata)
+    except Exception as e:
+        logger.error(f"Failed to concatenate dataframes: {str(e)}")
+        raise
 
     dfs_paradata.reset_index(drop=True, inplace=True)
     dfs_questionnaires.reset_index(drop=True, inplace=True)

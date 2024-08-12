@@ -11,33 +11,35 @@ PROJ_ROOT = Path(__file__).resolve().parents[1]
 logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
 
 env_file_path = PROJ_ROOT / 'env.yaml'
-
-# Function to parse lists
-def parse_version(env_var) -> list:
-    version = env_var.get('VERSION')
-    if not isinstance(version, list):
-        version = [version]
-    return version
-    
 def parse_questionaire(env_var) -> list:
-    # Ensure QUESTIONAIRE is always a list
-    questionaire = env_var.get('QUESTIONAIRE')
-    if isinstance(questionaire, str):
-        questionaire = [item.strip() for item in questionaire.split(',')]
-    elif not isinstance(questionaire, list):
-        questionaire = [questionaire]
-    return questionaire
+    # Ensure QUESTIONAIRE is always a list of dictionaries
+    questionaire = env_var.get('QUESTIONAIRE', [])
+    if isinstance(questionaire, list):
+        parsed_questionaire = []
+        for item in questionaire:
+            if isinstance(item, dict):
+                name = item.get('name')
+                version = item.get('VERSION', [])
+                if isinstance(version, int):
+                    version = [version]
+                parsed_questionaire.append({
+                    'name': name,
+                    'VERSION': version
+                })
+    return parsed_questionaire
 
 with open(env_file_path, 'r') as file:
     env_data = yaml.safe_load(file)
 
-
-
-
 # Load variables
 SURVEY = env_data.get('SURVEY')  # This will be a string
-QUESTIONAIRE = parse_questionaire(env_data)  # Convert to int
-VERSION = parse_version(env_data) 
+QUESTIONAIRE = parse_questionaire(env_data)  # Parse the new structure
+
+# Example usage of parsed data
+for item in QUESTIONAIRE:
+    name = item['name']
+    versions = item['VERSION']
+    print(f"Questionnaire: {name}, Versions: {versions}")
 
 
 

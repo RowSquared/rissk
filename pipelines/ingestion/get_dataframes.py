@@ -22,7 +22,7 @@ product = None
 # # Get Paradata, Microdata and Questionaire
 
 # %% tags=[]
-from rissk.config import SURVEY, QUESTIONAIRE, VERSION, RAW_DATA_DIR
+from rissk.config import SURVEY, QUESTIONAIRE, RAW_DATA_DIR
 from rissk.utils.import_utils import get_zip_files, extract_zip, get_survey_info, get_dataframes
 
 
@@ -30,7 +30,7 @@ from rissk.utils.import_utils import get_zip_files, extract_zip, get_survey_info
 # ## Extract Zip file
 
 # %%
-zip_files = get_zip_files(RAW_DATA_DIR, SURVEY, QUESTIONAIRE, VERSION)
+zip_files = get_zip_files(RAW_DATA_DIR, SURVEY, QUESTIONAIRE)
 
 survey_paths = []
 for zip_file in zip_files:
