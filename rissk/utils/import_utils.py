@@ -10,7 +10,7 @@ import re
 from typing import List, Dict, Optional
 from rissk.utils.file_manager_utils import *
 from rissk.utils.file_process_utils import (get_file_parts, transform_multi,
-                                            set_questionaire_version, normalize_column_name,
+                                            set_qnr_version, normalize_column_name,
                                             process_json_structure, get_categories,
                                             update_df_categories)
 
@@ -20,14 +20,14 @@ from rissk.utils.file_process_utils import (get_file_parts, transform_multi,
 PROJ_ROOT = Path(__file__).resolve().parents[1]
 logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
 
-def get_zip_files(data_dir: Path, survey: str, questionaires: List[Dict[str, List[int]]]) -> List[Path]:
+def get_zip_files(data_dir: Path, survey: str, questionnaires: List[Dict[str, List[int]]]) -> List[Path]:
     """
     Retrieves a list of zip files from the specified directory that match the given pattern.
 
     Parameters:
     - data_dir (Path): The directory to search for zip files.
     - survey (str): The survey name to match in the file names.
-    - questionaires (List[Dict[str, List[int]]]): A list of dictionaries, each containing a 
+    - questionnaires (List[Dict[str, List[int]]]): A list of dictionaries, each containing a 
       'name' of the questionnaire and a 'VERSION' list to match in the file names.
 
     Returns:
@@ -36,9 +36,9 @@ def get_zip_files(data_dir: Path, survey: str, questionaires: List[Dict[str, Lis
     matching_files = []
 
     # Iterate through each questionnaire and its associated versions
-    for questionaire in questionaires:
-        name = questionaire.get('name')
-        versions = questionaire.get('VERSION', [])
+    for questionnaire in questionnaires:
+        name = questionnaire.get('name')
+        versions = questionnaire.get('VERSION', [])
         
         # Compile a regex pattern for matching files
         version_pattern = "|".join(map(str, versions))
@@ -98,35 +98,38 @@ def extract_zip(file_source_path: Path, file_dest_path: Path):
     except Exception as e:
         logger.error(f'An unexpected error occurred: {e}')
 
-def get_from_dir(dir_name, info='version'):
+
+def get_from_dir(dir_name: str, info: str) -> str:
     """
-    Extract information from a directory name formatted as '<SURVEY>_<PROJECT>_<VERSION>_<ANY RANDOM NAME>'.
+    Extract information from a directory name formatted as '<QUESTIONAIRE>_<VERSION>_<FORMAT>_<STATUS>'.
 
     Parameters:
     dir_name (str): The directory name to parse.
-    info (str): The type of information to extract ('survey', 'project', 'version').
+    info (str): The type of information to extract ('questionaire', 'version', 'format', 'status').
 
     Returns:
     str: The extracted information.
 
     Raises:
-    ValueError: If the info parameter is not one of 'survey', 'project', 'version'.
+    ValueError: If the info parameter is not one of 'questionaire', 'version', 'format', 'status'.
     IndexError: If the directory name does not have the expected format.
     """
     # Map info to the corresponding index
     info_index = {
-        'survey': 0,
-        'project': 1,
-        'version': 2
+        'questionaire': 0,
+        'version': 1,
+        'format': 2,
+        'status': 3
     }
 
     if info not in info_index:
-        raise ValueError("info parameter must be one of 'survey', 'project', 'version'")
+        raise ValueError("info parameter must be one of 'questionaire', 'version', 'format', 'status'")
 
-    parts = dir_name.split('_')
+    # Reverse split to handle potential underscores in QUESTIONAIRE
+    parts = dir_name.rsplit('_', 3)
     
-    if len(parts) < 3:
-        raise IndexError("Directory name does not have the expected format '<SURVEY>_<PROJECT>_<VERSION>_<ANY RANDOM NAME>'")
+    if len(parts) < 4:
+        raise IndexError("Directory name does not have the expected format '<QUESTIONAIRE>_<VERSION>_<FORMAT>_<STATUS>'")
 
     return parts[info_index[info]]
 
@@ -263,16 +266,16 @@ def get_microdata(data_path, df_questionnaires):
     combined_df = combined_df[combined_df['value'].apply(is_valid)]
 
 
-    project_name = get_from_dir(data_path.name, 'project')
-    project_version = get_from_dir(data_path.name, 'version')
-    combined_df = set_questionaire_version(combined_df, project_name, project_version)
+    questionaire_name = get_from_dir(data_path.name, 'questionaire')
+    qnr_version = get_from_dir(data_path.name, 'version')
+    combined_df = set_qnr_version(combined_df, questionaire_name, qnr_version)
 
     # Manage the case questionnaires are not available for the survey
     if df_questionnaires.empty is False:
         roster_columns = [c for c in combined_df.columns if '__id' in c and c != 'interview__id']
         combined_df = combined_df.merge(df_questionnaires, how='left',
-                                        left_on=['variable', 'qnr', 'questionaire_version'],
-                                        right_on=['variable_name', 'qnr', 'questionaire_version']).sort_values(
+                                        left_on=['variable', 'qnr', 'qnr_version'],
+                                        right_on=['variable_name', 'qnr', 'qnr_version']).sort_values(
             ['interview__id', 'qnr_seq'] + roster_columns)
 
     combined_df.reset_index(drop=True, inplace=True)
@@ -285,36 +288,36 @@ def get_microdata(data_path, df_questionnaires):
     return combined_df
 
 
-def get_questionaire_map(raw_path):
-    questionaire_map = {}
-    questionaire_list = os.listdir(raw_path)
-    for questionaire in questionaire_list:
-        if questionaire.endswith('.json'):
-            file_name = os.path.basename(questionaire)
-            questionaire_id = file_name.split('_')[0].replace('-', '')
-            questionaire_version = questionaire.split('_')[1].replace('.json', '')
-            questionaire_map[questionaire_id] = {
+def get_questionnaire_map(raw_path):
+    questionnaire_map = {}
+    questionnaire_list = os.listdir(raw_path)
+    for questionnaire in questionnaire_list:
+        if questionnaire.endswith('.json'):
+            file_name = os.path.basename(questionnaire)
+            questionnaire_id = file_name.split('_')[0].replace('-', '')
+            qnr_version = questionnaire.split('_')[1].replace('.json', '')
+            questionnaire_map[questionnaire_id] = {
                 'file_name': file_name,
-                'questionaire_version': questionaire_version,
+                'qnr_version': qnr_version,
                 'file_path': os.path.join(raw_path, file_name)
             }
-    return questionaire_map
+    return questionnaire_map
 
 
-def get_questionaire_id(extracted_path):
+def get_questionnaire_id(extracted_path):
     file_path = os.path.join(extracted_path, 'export__info.json')
     with open(file_path, mode='r') as f:
         data = json.load(f)
     return data.get('QuestionnaireId').split("$")[0]
 
 
-def read_json_questionaire(survey_path, questionaire_path=None):
-    if questionaire_path is None:
+def read_json_questionnaire(survey_path, questionnaire_path=None):
+    if questionnaire_path is None:
         file_path = os.path.join(survey_path, 'Questionnaire/content/document.json')
     else:
-        questionaire_id = get_questionaire_id(survey_path)
-        questionaire_map = get_questionaire_map(questionaire_path)
-        file_path = questionaire_map.get(questionaire_id).get('file_path')
+        questionnaire_id = get_questionnaire_id(survey_path)
+        questionnaire_map = get_questionnaire_map(questionnaire_path)
+        file_path = questionnaire_map.get(questionnaire_id).get('file_path')
     with open(file_path, 'r') as f:
         data = json.load(f)
     return data
@@ -326,19 +329,19 @@ def read_paradata(survey_path, delimiter='\t'):
         df = pd.read_csv(f, delimiter=delimiter)
     return df
 
-def get_questionaire(data_path: Path, questionaire_path: Optional[Path] = None) -> pd.DataFrame:
+def get_questionnaire(data_path: Path, questionnaire_path: Optional[Path] = None) -> pd.DataFrame:
     """
     This function loads and processes a questionnaire from a JSON file located at the specified path.
     It also handles the categorization of the data.
 
     Parameters:
     data_path (Path): The path to the directory containing the questionnaire and categories data.
-    questionaire_path (Optional[Path]): The path to the questionnaire JSON file.
+    questionnaire_path (Optional[Path]): The path to the questionnaire JSON file.
 
     Returns:
     pd.DataFrame: A processed DataFrame containing the questionnaire data.
     """
-    q_data = read_json_questionaire(data_path, questionaire_path=questionaire_path)
+    q_data = read_json_questionnaire(data_path, questionnaire_path=questionnaire_path)
 
     qnr_df = pd.DataFrame()
 
@@ -371,9 +374,9 @@ def get_questionaire(data_path: Path, questionaire_path: Optional[Path] = None) 
     # Normalize columns
     qnr_df.columns = [normalize_column_name(c) for c in qnr_df.columns]
 
-    project_name = get_from_dir(data_path.name, 'project')
-    project_version = get_from_dir(data_path.name, 'version')
-    qnr_df = set_questionaire_version(qnr_df, project_name, project_version)
+    questionaire_name = get_from_dir(data_path.name, 'questionaire')
+    qnr_version = get_from_dir(data_path.name, 'version')
+    qnr_df = set_qnr_version(qnr_df, questionaire_name, qnr_version)
     return qnr_df
 
 
@@ -405,10 +408,10 @@ def get_paradata(data_path, df_questionnaires):
     df_para['timestamp_local'] = df_para['timestamp_utc'] + df_para['tz_offset']
 
 
-    project_name = get_from_dir(data_path.name, 'project')
-    project_version = get_from_dir(data_path.name, 'version')
+    questionaire_name = get_from_dir(data_path.name, 'questionaire')
+    qnr_version = get_from_dir(data_path.name, 'version')
 
-    df_para = set_questionaire_version(df_para, project_name, project_version)
+    df_para = set_qnr_version(df_para, questionaire_name, qnr_version)
 
     #Merge with questionnaire data
     if df_questionnaires.empty is False:
@@ -417,10 +420,10 @@ def get_paradata(data_path, df_questionnaires):
                      'yes_no_view', 'is_filtered_combobox',
                      'is_integer', 'cascade_from_question_id',
                      'answer_sequence', 'n_answers', 'question_sequence',
-                     'qnr', 'questionaire_version']
+                     'qnr', 'qnr_version']
         df_para = df_para.merge(df_questionnaires[q_columns], how='left',
-                                left_on=['param', 'qnr', 'questionaire_version'],
-                                right_on=['variable_name', 'qnr', 'questionaire_version'])
+                                left_on=['param', 'qnr', 'qnr_version'],
+                                right_on=['variable_name', 'qnr', 'qnr_version'])
 
     # Normalize column names
     df_para.columns = [normalize_column_name(c) for c in df_para.columns]
@@ -448,7 +451,7 @@ def get_dataframes(survey_info):
             paradata_path = file_paths['Paradata']
 
             try:
-                df_questionnaires = get_questionaire(tabular_path)
+                df_questionnaires = get_questionnaire(tabular_path)
             except Exception as e:
                 logger.error(f"Failed to load questionnaire for {survey_questionnaire} version {questionnaires_version} from {tabular_path}: {str(e)}")
                 raise

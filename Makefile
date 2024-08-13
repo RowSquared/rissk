@@ -48,14 +48,14 @@ format:
 .PHONY: sync_data_down
 sync_data_down:
 	aws s3 sync s3://surveytool/pmpmd/latest/ \
-		data/pmpmd
+		data/pmpmd --exclude *.m4a
 	
 
 ## Upload Data to storage system
 .PHONY: sync_data_up
 sync_data_up:
 	aws s3 sync data/pmpmd \
-		s3://surveytool/pmpmd/latest
+		s3://surveytool/pmpmd/latest --exclude *.m4a
 	
 
 

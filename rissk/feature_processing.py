@@ -29,7 +29,7 @@ class FeatureProcessing(object):
         survey_info = get_survey_info(config)
 
 
-        paradata, questionaire, microdata = get_dataframes(survey_info, self._raw_path, self._processed_path, config,
+        paradata, questionnaire, microdata = get_dataframes(survey_info, self._raw_path, self._processed_path, config,
                                                                       reload=self._reload,
                                                                       save_to_disk=self._save_to_disk)
 
@@ -111,15 +111,15 @@ class FeatureProcessing(object):
 
     @property
     def df_microdata(self):
-        paradata, questionaire, microdata = self.get_dataframes(reload=self._reload,
+        paradata, questionnaire, microdata = self.get_dataframes(reload=self._reload,
                                                                 save_to_disk=self._save_to_disk)
         return microdata
 
     @property
-    def df_questionaire(self):
-        paradata, questionaire, microdata = self.get_dataframes(reload=self._reload,
+    def df_questionnaire(self):
+        paradata, questionnaire, microdata = self.get_dataframes(reload=self._reload,
                                                                 save_to_disk=self._save_to_disk)
-        return questionaire
+        return questionnaire
 
     def make_index_col(self, df):
 

@@ -2,11 +2,13 @@ import os
 from pathlib import Path
 import pandas as pd
 from typing import Dict
+import re
 
 
-def set_questionaire_version(df, survey_project, project_version):
+
+def set_qnr_version(df, survey_project, project_version):
     df['qnr'] = survey_project
-    df['questionaire_version'] = project_version
+    df['qnr_version'] = project_version
     return df
 
 
@@ -204,19 +206,43 @@ def update_df_categories(row, categories):
         row['answer_sequence'] = categories[row['CategoriesId']]['answer_sequence']
     return row
 
+def parse_filename(filename: str):
+    """
+    Parses a filename based on the pattern <QUESTIONAIRE>_<VERSION>_<FORMAT>_<STATUS>.
+
+    Parameters:
+    filename (str): The filename to parse.
+
+    Returns:
+    dict: A dictionary containing 'questionnaire', 'version', 'format', and 'status'.
+    """
+    # Regex pattern to match the filename structure
+    pattern = r"^(?P<questionnaire>.+)_(?P<version>[0-9]+)_(?P<format>.+)_(?P<status>.+)$"
+    
+    match = re.match(pattern, filename)
+    if not match:
+        raise ValueError(f"Filename '{filename}' does not match the expected pattern.")
+    
+    components = match.groupdict()
+
+    # Extract components as a list
+    components = [
+        match.group('questionnaire'),
+        match.group('version'),
+        match.group('format'),
+        match.group('status')
+    ]
+    return components
+
 
 def get_file_parts(filename):
-    # split by "_"
-    filename_parts = filename.split("_")
-    if len(filename_parts) < 4:
-        raise ValueError(f"ERROR: {filename} Not a valid Survey Solutions export file.")
 
-    version, file_format, interview_status = filename_parts[-3:]
+    questionnaire, version, file_format, interview_status = parse_filename(filename)
     try:
         version = int(version)
     except ValueError:
         raise ValueError(f"ERROR: {filename} Not a valid Survey Solutions export file. Version not found.")
-    questionnaire = "_".join(filename_parts[:-3])
+
     # Test input file has the correct name
     if file_format not in ["Tabular", "STATA", "SPSS", "Paradata"]:
         raise ValueError(f"ERROR: {filename} Not a valid Survey Solutions export file. Export type not found")

@@ -103,7 +103,7 @@ active_mask = (paradata['event'].isin(active_events)) & \
 vars_needed = ['interview__id', 'order', 'event', 'responsible', 'role', 'tz_offset',
                 'param', 'answer', 'roster_level', 'timestamp_local', 'variable_name',
                 'question_sequence', 'question_scope', "qtype", 'question_type',
-                'qnr', 'questionaire_version', 'interviewing', 'yes_no_view', 'index_col', 'f__answer_hour_set'
+                'qnr', 'qnr_version', 'interviewing', 'yes_no_view', 'index_col', 'f__answer_hour_set'
                 ]
 
 df_para_active = paradata.loc[active_mask, vars_needed]
