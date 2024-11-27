@@ -47,15 +47,19 @@ format:
 ## Download Data from storage system
 .PHONY: sync_data_down
 sync_data_down:
-	aws s3 sync s3://surveytool/pmpmd/latest/ \
-		data/pmpmd --exclude *.m4a
-	
+	aws s3 sync s3://surveytool/hies2024/latest/ \
+		data/hies2024 \
+		--exclude * \
+		--include *.zip
+##--exclude *.m4a 
 
-## Upload Data to storage system
 .PHONY: sync_data_up
 sync_data_up:
-	aws s3 sync data/pmpmd \
-		s3://surveytool/pmpmd/latest --exclude *.m4a
+	aws s3 sync data/hies2024 \
+		s3://surveytool/hies2024/latest \
+		--exclude "*.m4a" \
+		--include "10_RAW/**/document.json" \
+		--exclude "10_RAW/*"
 	
 
 
