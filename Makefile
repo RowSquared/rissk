@@ -6,6 +6,10 @@ PROJECT_NAME = rissk
 PYTHON_VERSION = 3.10
 PYTHON_INTERPRETER = python
 
+# Extract SURVEY value from env.yaml
+SURVEY := $(shell $(PYTHON_INTERPRETER) -c "import yaml; print(yaml.safe_load(open('env.yaml'))['SURVEY'])")
+
+
 #################################################################################
 # COMMANDS                                                                      #
 #################################################################################
@@ -18,11 +22,6 @@ requirements:
 	
 	
 	R -e "IRkernel::installspec(user = TRUE)"
-	
-	
-
-	
-
 
 
 ## Delete all compiled Python files
@@ -47,15 +46,14 @@ format:
 ## Download Data from storage system
 .PHONY: sync_data_down
 sync_data_down:
-	aws s3 sync s3://surveytool/pmpmd/latest/ \
-		data/pmpmd --exclude *.m4a
-	
+	aws s3 sync s3://surveytool/$(SURVEY)/latest/ \
+		data/$(SURVEY) --exclude *.m4a
 
 ## Upload Data to storage system
 .PHONY: sync_data_up
 sync_data_up:
-	aws s3 sync data/pmpmd \
-		s3://surveytool/pmpmd/latest --exclude *.m4a
+	aws s3 sync data/$(SURVEY) \
+		s3://surveytool/$(SURVEY)/latest --exclude *.m4a
 	
 
 
