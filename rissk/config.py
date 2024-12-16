@@ -32,16 +32,14 @@ with open(env_file_path, 'r') as file:
     env_data = yaml.safe_load(file)
 
 # Load variables
-SURVEY = env_data.get('SURVEY')  # This will be a string
+SURVEY = env_data.get('SURVEY')  
 QUESTIONAIRE = parse_questionnaire(env_data)  # Parse the new structure
 
-# Example usage of parsed data
+logger.info(f"Avaliable Questionnaires")
 for item in QUESTIONAIRE:
     name = item['name']
     versions = item['VERSION']
-    print(f"Questionnaire: {name}, Versions: {versions}")
-
-
+    logger.info(f"Questionnaire: {name} - Versions: {versions}")
 
 
 DATA_DIR = PROJ_ROOT / 'data' / SURVEY

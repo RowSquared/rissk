@@ -13,7 +13,7 @@ setup(
     long_description_content_type='text/markdown',
     license='MIT',
     packages=find_packages(),
-    install_requires=requirements,
+    #install_requires=requirements,
     setup_requires=['pytest-runner'],
     tests_require=['pytest'],
     test_suite='tests',

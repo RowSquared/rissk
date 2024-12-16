@@ -7,8 +7,8 @@ from io import BytesIO
 from loguru import logger
 from pathlib import Path
 import re
+import os
 from typing import List, Dict, Optional
-from rissk.utils.file_manager_utils import *
 from rissk.utils.file_process_utils import (get_file_parts, transform_multi,
                                             set_qnr_version, normalize_column_name,
                                             process_json_structure, get_categories,

@@ -6,6 +6,11 @@ tasks:
       paradata: data/{{SURVEY}}/20_INTERIM/paradata.parquet
       questionnaire: data/{{SURVEY}}/30_PROCESSED/questionnaire.parquet
       microdata: data/{{SURVEY}}/30_PROCESSED/microdata.parquet
+    # TODO! Need to find a way to add a json file with metadata for automatic trigger i.e. right now need to do `dag.build(force=True)` to force the run. If there was a josn file that changes, there would no need of `force=True`
+    # params:
+    #   resources_:
+    #     # whenever the JSON file changes, my-script.py runs again
+    #     file: data/{{SURVEY}}//10_RAW/{{QUESTIONAIRE[0].name}}_{{QUESTIONAIRE[0].VERSION[0]}}_Paradata_All/export__info.json
   - source: pipelines/feature_engineering/process_paradata.py
     product:
       nb: outputs/process_paradata.ipynb
