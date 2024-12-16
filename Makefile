@@ -47,13 +47,13 @@ format:
 .PHONY: sync_data_down
 sync_data_down:
 	aws s3 sync s3://surveytool/$(SURVEY)/latest/ \
-		data/$(SURVEY) --exclude *.m4a
+		data/$(SURVEY) --exclude *.m4a --exclude ".DS_Store"
 
 ## Upload Data to storage system
 .PHONY: sync_data_up
 sync_data_up:
 	aws s3 sync data/$(SURVEY) \
-		s3://surveytool/$(SURVEY)/latest --exclude *.m4a
+		s3://surveytool/$(SURVEY)/latest --exclude *.m4a --exclude ".DS_Store"
 	
 
 
