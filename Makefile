@@ -47,15 +47,19 @@ format:
 .PHONY: sync_data_down
 sync_data_down:
 	aws s3 sync s3://surveytool/$(SURVEY)/latest/ \
-		data/$(SURVEY) --exclude *.m4a --exclude ".DS_Store"
+		data/$(SURVEY)  \
+		--exclude * \
+		--include *.zip
 
 ## Upload Data to storage system
 .PHONY: sync_data_up
 sync_data_up:
 	aws s3 sync data/$(SURVEY) \
-		s3://surveytool/$(SURVEY)/latest --exclude *.m4a --exclude ".DS_Store"
+		s3://surveytool/$(SURVEY)/latest \
+		--exclude "*.m4a" \
+		--include "10_RAW/**/document.json" \
+		--exclude "10_RAW/*"
 	
-
 
 ## Set up python (R) interpreter environment
 .PHONY: create_environment
@@ -64,8 +68,6 @@ create_environment:
 	
 	@echo ">>> conda env created. Activate with:\nconda activate $(PROJECT_NAME)"
 	
-
-
 
 #################################################################################
 # PROJECT RULES                                                                 #
