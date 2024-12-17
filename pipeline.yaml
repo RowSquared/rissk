@@ -1,3 +1,4 @@
+executor: serial
 tasks:
   - source: pipelines/ingestion/get_dataframes.py
     name: get_dataframes
