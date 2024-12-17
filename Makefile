@@ -47,9 +47,9 @@ format:
 .PHONY: sync_data_down
 sync_data_down:
 	aws s3 sync s3://surveytool/$(SURVEY)/latest/ \
-		data/$(SURVEY)  \
-		--exclude * \
-		--include *.zip
+		data/$(SURVEY) \
+		--exclude "*" \
+		--include "*.zip"
 
 ## Upload Data to storage system
 .PHONY: sync_data_up
@@ -57,8 +57,10 @@ sync_data_up:
 	aws s3 sync data/$(SURVEY) \
 		s3://surveytool/$(SURVEY)/latest \
 		--exclude "*.m4a" \
-		--include "10_RAW/**/document.json" \
-		--exclude "10_RAW/*"
+		--exclude "10_RAW/*" \
+		--include "10_RAW/**/document.json"
+
+		
 	
 
 ## Set up python (R) interpreter environment
