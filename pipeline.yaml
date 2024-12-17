@@ -11,10 +11,13 @@ tasks:
     #   resources_:
     #     # whenever the JSON file changes, my-script.py runs again
     #     file: data/{{SURVEY}}//10_RAW/{{QUESTIONAIRE[0].name}}_{{QUESTIONAIRE[0].VERSION[0]}}_Paradata_All/export__info.json
-  - source: pipelines/feature_engineering/process_paradata.py
+  - source: pipelines/feature_engineering/10_process_paradata.py
     product:
       nb: outputs/process_paradata.ipynb
       paradata: data/{{SURVEY}}/30_PROCESSED/paradata.parquet
+  - source: pipelines/feature_engineering/11_process_paradata_active.py
+    product:
+      nb: outputs/process_paradata_active.ipynb
       paradata_active: data/{{SURVEY}}/30_PROCESSED/paradata_active.parquet
     params:
       limit_unit: '{{limit_unit}}'
