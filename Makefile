@@ -58,9 +58,9 @@ sync_data_up:
 		s3://surveytool/$(SURVEY)/latest \
 		--exclude "*.m4a" \
 		--exclude "10_RAW/*" \
+		--exclude "20_INTERIM/*" \
+		--include "20_INTERIM/**/paradata.parquet" \
 		--include "10_RAW/**/document.json"
-
-		
 	
 
 ## Set up python (R) interpreter environment

@@ -12,7 +12,7 @@
 
 # %% tags=["parameters"]
 # declare a list tasks whose products you want to use as inputs
-upstream = ['get_dataframes']
+upstream = ['01_get_dataframes']
 product = None
 limit_unit = None
 
@@ -21,7 +21,7 @@ import pandas as pd
 import numpy as np
 
 # %%
-paradata = pd.read_parquet(upstream['get_dataframes']['paradata'])
+paradata = pd.read_parquet(upstream['01_get_dataframes']['paradata'])
 #paradata.fillna('', inplace=True)
 
 paradata['f__answer_hour_set'] = (paradata['timestamp_local'].dt.hour + paradata['timestamp_local'].dt.round('30min').dt.minute / 60)

@@ -1,9 +1,8 @@
 executor: serial
 tasks:
-  - source: pipelines/ingestion/get_dataframes.py
-    name: get_dataframes
+  - source: pipelines/ingestion/01_get_dataframes.py
     product:
-      nb: outputs/get_dataframes.ipynb
+      nb: outputs/01_get_dataframes.ipynb
       paradata: data/{{SURVEY}}/20_INTERIM/paradata.parquet
       questionnaire: data/{{SURVEY}}/30_PROCESSED/questionnaire.parquet
       microdata: data/{{SURVEY}}/30_PROCESSED/microdata.parquet
@@ -14,12 +13,13 @@ tasks:
     #     file: data/{{SURVEY}}//10_RAW/{{QUESTIONAIRE[0].name}}_{{QUESTIONAIRE[0].VERSION[0]}}_Paradata_All/export__info.json
   - source: pipelines/feature_engineering/10_process_paradata.py
     product:
-      nb: outputs/process_paradata.ipynb
+      nb: outputs/10_process_paradata.ipynb
       paradata: data/{{SURVEY}}/30_PROCESSED/paradata.parquet
   - source: pipelines/feature_engineering/11_process_paradata_active.py
     product:
-      nb: outputs/process_paradata_active.ipynb
+      nb: outputs/11_process_paradata_active.ipynb
       paradata_active: data/{{SURVEY}}/30_PROCESSED/paradata_active.parquet
     params:
       limit_unit: '{{limit_unit}}'
+
       
