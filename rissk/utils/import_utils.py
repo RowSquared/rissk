@@ -16,9 +16,6 @@ from rissk.utils.file_process_utils import (get_file_parts, transform_multi,
 
 
 
-# Paths
-PROJ_ROOT = Path(__file__).resolve().parents[1]
-logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
 
 def get_zip_files(data_dir: Path, survey: str, questionnaires: List[Dict[str, List[int]]]) -> List[Path]:
     """

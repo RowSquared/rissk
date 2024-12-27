@@ -63,19 +63,18 @@ microdata_file = product['microdata']
 
 
 
-with open(paradata_file, 'wb') as f:
-    if 'answer_sequence' in dfs_paradata.columns:
-        dfs_paradata['answer_sequence'] = dfs_paradata['answer_sequence'].apply(str)
-    dfs_paradata.to_parquet(f)
 
-with open(questionnaire_file, 'wb') as f:
-    if 'answer_sequence' in dfs_questionnaires.columns:
-        dfs_questionnaires['answer_sequence'] = dfs_questionnaires['answer_sequence'].apply(str)
-    dfs_questionnaires.to_parquet(f)
+if 'answer_sequence' in dfs_paradata.columns:
+    dfs_paradata['answer_sequence'] = dfs_paradata['answer_sequence'].apply(str)
+dfs_paradata.to_parquet(paradata_file)
 
-with open(microdata_file, 'wb') as f:
-    if 'answer_sequence' in dfs_microdata.columns:
-        dfs_microdata['answer_sequence'] = dfs_microdata['answer_sequence'].apply(str)
-    dfs_microdata.to_parquet(f)
+if 'answer_sequence' in dfs_questionnaires.columns:
+    dfs_questionnaires['answer_sequence'] = dfs_questionnaires['answer_sequence'].apply(str)
+dfs_questionnaires.to_parquet(questionnaire_file)
+
+
+if 'answer_sequence' in dfs_microdata.columns:
+    dfs_microdata['answer_sequence'] = dfs_microdata['answer_sequence'].apply(str)
+dfs_microdata.to_parquet(microdata_file)
 
 # %%

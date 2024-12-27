@@ -83,10 +83,9 @@ paradata.reset_index(inplace=True)
 #     paradata = paradata[paradata['interview__id'].isin(filtered_interview_id)].copy()
 
 # %%
+if 'answer_sequence' in paradata.columns:
+    paradata['answer_sequence'] = paradata['answer_sequence'].apply(str)
 paradata_file = product['paradata']
-with open(paradata_file, 'wb') as f:
-    if 'answer_sequence' in paradata.columns:
-        paradata['answer_sequence'] = paradata['answer_sequence'].apply(str)
-    paradata.to_parquet(f)
+paradata.to_parquet(paradata_file)
 
 # %%

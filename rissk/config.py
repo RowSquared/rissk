@@ -1,5 +1,6 @@
 from pathlib import Path
 import yaml
+import os
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -7,7 +8,7 @@ from loguru import logger
 load_dotenv()
 
 # Paths
-PROJ_ROOT = Path(__file__).resolve().parents[1]
+PROJ_ROOT = Path(__file__).parent.parent 
 logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
 
 env_file_path = PROJ_ROOT / 'env.yaml'
@@ -42,7 +43,8 @@ for item in QUESTIONAIRE:
     logger.info(f"Questionnaire: {name} - Versions: {versions}")
 
 
-DATA_DIR = PROJ_ROOT / 'data' / SURVEY
+DATA_DIR = PROJ_ROOT / "data" / SURVEY / "latest"
+
 EXTERNAL_DATA_DIR = DATA_DIR / "00_EXTERNAL"
 RAW_DATA_DIR = DATA_DIR / "10_RAW"
 INTERIM_DATA_DIR = DATA_DIR / "20_INTERIM"

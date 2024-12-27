@@ -37,4 +37,6 @@ dependencies:
       - ploomber==0.23.3
       - ipywidgets==8.1.5
       - typer==0.15.1
+      - boto3==1.35.88
+      - botocore==1.35.88
       - -e .
