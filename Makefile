@@ -60,8 +60,7 @@ sync_data_up:
 		--exclude "10_RAW/*" \
 		--exclude "20_INTERIM/*" \
 		--include "20_INTERIM/**/paradata.parquet" \
-		--include "10_RAW/**/document.json"
-	
+    	--include "10_RAW/**/Questionnaire/*"	
 
 ## Set up python (R) interpreter environment
 .PHONY: create_environment
