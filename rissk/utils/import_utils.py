@@ -16,6 +16,9 @@ from rissk.utils.file_process_utils import (get_file_parts, transform_multi,
 
 
 
+# Paths
+PROJ_ROOT = Path(__file__).resolve().parents[1]
+logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
 
 def get_zip_files(data_dir: Path, survey: str, questionnaires: List[Dict[str, List[int]]]) -> List[Path]:
     """
@@ -445,7 +448,7 @@ def get_dataframes(survey_info):
     for survey_questionnaire, questionnaires_details in survey_info.items():
         for questionnaires_version, file_paths in questionnaires_details.items():
             tabular_path = file_paths['Tabular']
-            paradata_path = file_paths['Paradata']
+            #paradata_path = file_paths['Paradata']
 
             try:
                 df_questionnaires = get_questionnaire(tabular_path)
@@ -453,11 +456,11 @@ def get_dataframes(survey_info):
                 logger.error(f"Failed to load questionnaire for {survey_questionnaire} version {questionnaires_version} from {tabular_path}: {str(e)}")
                 raise
 
-            try:
-                df_paradata = get_paradata(paradata_path, df_questionnaires)
-            except Exception as e:
-                logger.error(f"Failed to load paradata for {survey_questionnaire} version {questionnaires_version} from {paradata_path}: {str(e)}")
-                raise
+            #try:
+            #    df_paradata = get_paradata(paradata_path, df_questionnaires)
+            #except Exception as e:
+            #    logger.error(f"Failed to load paradata for {survey_questionnaire} version {questionnaires_version} from {paradata_path}: {str(e)}")
+            #    raise
 
             try:
                 df_microdata = get_microdata(tabular_path, df_questionnaires)
@@ -467,26 +470,26 @@ def get_dataframes(survey_info):
 
             logger.info(f"{survey_questionnaire} with version {questionnaires_version} loaded. "
                         f"\n"
-                        f"Paradata shape: {df_paradata.shape} "
+                        #f"Paradata shape: {df_paradata.shape} "
                         f"Questionnaires shape: {df_questionnaires.shape} "
                         f"Microdata shape: {df_microdata.shape} ")
 
-            dfs_paradata.append(df_paradata)
+            #dfs_paradata.append(df_paradata)
             dfs_questionnaires.append(df_questionnaires)
             dfs_microdata.append(df_microdata)
 
     # create unique dataframe with all surveys
     try:
-        dfs_paradata = pd.concat(dfs_paradata)
+        #dfs_paradata = pd.concat(dfs_paradata)
         dfs_questionnaires = pd.concat(dfs_questionnaires)
         dfs_microdata = pd.concat(dfs_microdata)
     except Exception as e:
         logger.error(f"Failed to concatenate dataframes: {str(e)}")
         raise
 
-    dfs_paradata.reset_index(drop=True, inplace=True)
+    #dfs_paradata.reset_index(drop=True, inplace=True)
     dfs_questionnaires.reset_index(drop=True, inplace=True)
     dfs_microdata.reset_index(drop=True, inplace=True)
-
-    return dfs_paradata, dfs_questionnaires, dfs_microdata
+    #dfs_paradata
+    return  dfs_questionnaires, dfs_microdata
     
