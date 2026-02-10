@@ -1,25 +1,23 @@
-"""Data ingestion pipeline definition."""
 from kedro.pipeline import Pipeline, node, pipeline
-from .nodes import unzip_raw_surveys, load_survey_dataframes
-
+from .nodes import unzip_survey_data_node, load_survey_data_node
 
 def create_pipeline(**kwargs) -> Pipeline:
-    """Create the data ingestion pipeline.
-    
-    Returns:
-        A pipeline that extracts and loads Survey Solutions data.
-    """
     return pipeline([
         node(
-            func=unzip_raw_surveys,
-            inputs=["raw_zip_files", "params:survey"],
-            outputs=None,  # Side effect: extracts to same directory
-            name="unzip_surveys_node",
+            func=unzip_survey_data_node,
+            inputs=[
+                "params:survey.name",
+                "params:ingestion.raw_data_path",
+                "params:survey.questionnaires",
+                "params:zip_password"
+            ],
+            outputs="extracted_survey_paths",
+            name="unzip_survey_data_node"
         ),
         node(
-            func=load_survey_dataframes,
-            inputs="params:survey",
-            outputs=["paradata_raw", "questionnaire_raw", "microdata_raw"],
-            name="load_dataframes_node",
-        ),
+            func=load_survey_data_node,
+            inputs="extracted_survey_paths",
+            outputs=["paradata_interim", "raw_questionnaire", "raw_microdata"],
+            name="load_survey_data_node"
+        )
     ])

@@ -51,7 +51,7 @@ def get_zip_files(data_dir: Path, survey: str, questionnaires: List[Dict[str, Li
     return matching_files
 
 
-def extract_zip(file_source_path: Path, file_dest_path: Path):
+def extract_zip(file_source_path: Path, file_dest_path: Path, password: Optional[str] = None):
     """
     Extracts a zip file to the specified destination path.
     If nested zip files are encountered, they are extracted recursively.
@@ -59,8 +59,10 @@ def extract_zip(file_source_path: Path, file_dest_path: Path):
     Parameters:
     - file_source_path (Path): Path to the source zip file.
     - file_dest_path (Path): Destination directory where files will be extracted.
+    - password (str, optional): Password for encrypted zip files.
     """
-    password = os.getenv('PASSWORD', None)
+    if password is None:
+        password = os.getenv('PASSWORD', None)
     
     try:
         with file_source_path.open(mode='rb') as f:

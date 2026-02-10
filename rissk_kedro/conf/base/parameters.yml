@@ -7,6 +7,12 @@ survey:
     - name: "slbhies_listing"
       versions: [6, 7]
 
+zip_password: ${oc.env:PASSWORD}
+
+# Ingestion Configuration
+ingestion:
+  raw_data_path: "data/10_RAW"
+
 # Processing Parameters
 processing:
   limit_unit: null  # Set to filter by consent if needed
