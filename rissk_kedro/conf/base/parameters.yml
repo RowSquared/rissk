@@ -1,0 +1,80 @@
+# Survey Configuration (from env.yaml)
+survey:
+  name: "hies2024"
+  questionnaires:
+    - name: "snb_hies_hh"
+      versions: [9, 10, 11]
+    - name: "slbhies_listing"
+      versions: [6, 7]
+
+# Processing Parameters
+processing:
+  limit_unit: null  # Set to filter by consent if needed
+  automatic_contamination: false
+
+# Feature Engineering Configuration (from configuration/main.yaml)
+features:
+  answer_hour_set:
+    use: true
+    contamination: 0.11
+  answer_changed:
+    use: true
+    contamination: 0.1
+  answer_removed:
+    use: true
+    contamination: 0.1
+  answer_selected:
+    use: true
+    contamination: 0.1
+  answer_duration:
+    use: true
+    contamination: 0.1
+  first_decimal:
+    use: true
+    contamination: 0.11
+    frequency: 100
+  first_digit:
+    use: true
+  last_digit:
+    use: false
+  numeric_response:
+    use: true
+  sequence_jump:
+    use: true
+    contamination: 0.1
+  time_changed:
+    use: true
+  gps:
+    use: true
+    sub_features: [gps_latitude, gps_longitude, gps_accuracy]
+    contamination: 0.11
+  pause_count:
+    use: true
+    contamination: 0.11
+  pause_duration:
+    use: true
+    contamination: 0.11
+  pause_list:
+    use: false
+  number_unanswered:
+    use: false
+  number_answered:
+    use: true
+    contamination: 0.11
+  total_duration:
+    use: true
+    contamination: 0.11
+  total_elapse:
+    use: true
+    contamination: 0.11
+  single_question:
+    use: true
+  multi_option_question:
+    use: true
+  days_from_start:
+    use: false
+
+# Output Configuration
+output:
+  feature_score: false
+  unit_risk_score_path: "results/unit_risk_score.csv"

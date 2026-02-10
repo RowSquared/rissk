@@ -1,0 +1,68 @@
+# Here you can define all your data sets by using simple YAML syntax.
+#
+# === RAW DATA (Zipped Survey Solutions Exports) ===
+raw_zip_files:
+  type: PartitionedDataset
+  path: data/10_RAW
+  dataset: 
+    type: kedro.extras.datasets.text.TextDataset  # Placeholder, actual extraction in node
+  filename_suffix: ".zip"
+
+# === INTERMEDIATE (Extracted Files) ===
+extracted_survey_data:
+  type: PartitionedDataset
+  path: data/10_RAW
+  dataset:
+    type: kedro.extras.datasets.text.TextDataset
+  filename_suffix: ""
+
+# === PRIMARY (Ingested DataFrames) ===
+paradata_raw:
+  type: pandas.ParquetDataset
+  filepath: data/20_INTERIM/paradata_raw.parquet
+
+questionnaire_raw:
+  type: pandas.ParquetDataset
+  filepath: data/20_INTERIM/questionnaire_raw.parquet
+
+microdata_raw:
+  type: pandas.ParquetDataset
+  filepath: data/20_INTERIM/microdata_raw.parquet
+
+# === FEATURE PROCESSED ===
+paradata_processed:
+  type: pandas.ParquetDataset
+  filepath: data/30_PROCESSED/paradata_processed.parquet
+
+paradata_active:
+  type: pandas.ParquetDataset
+  filepath: data/30_PROCESSED/paradata_active.parquet
+
+item_features:
+  type: pandas.ParquetDataset
+  filepath: data/30_PROCESSED/item_features.parquet
+
+unit_features:
+  type: pandas.ParquetDataset
+  filepath: data/30_PROCESSED/unit_features.parquet
+
+unit_risk_scores_raw:
+  type: pandas.ParquetDataset
+  filepath: data/30_PROCESSED/unit_risk_scores_raw.parquet
+
+responsible_features:
+  type: pandas.ParquetDataset
+  filepath: data/30_PROCESSED/responsible_features.parquet
+
+# === MODEL OUTPUT ===
+unit_risk_scores:
+  type: pandas.CSVDataset
+  filepath: data/40_OUTPUTS/unit_risk_scores.csv
+  save_args:
+    index: false
+
+unit_feature_scores:
+  type: pandas.CSVDataset
+  filepath: data/40_OUTPUTS/unit_feature_scores.csv
+  save_args:
+    index: false
