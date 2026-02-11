@@ -39,5 +39,14 @@ def load_survey_data_node(survey_paths: List[Path]) -> Tuple[pd.DataFrame, pd.Da
     
     # Returns: paradata, questionnaire, microdata
     dfs_para, dfs_qnr, dfs_micro = get_dataframes(survey_info)
+
+    if 'answer_sequence' in dfs_para.columns:
+        dfs_para['answer_sequence'] = dfs_para['answer_sequence'].apply(str)
+
+    if 'answer_sequence' in dfs_qnr.columns:
+        dfs_qnr['answer_sequence'] = dfs_qnr['answer_sequence'].apply(str)
+
+    if 'answer_sequence' in dfs_micro.columns:
+        dfs_micro['answer_sequence'] = dfs_micro['answer_sequence'].apply(str)
     
     return dfs_para, dfs_qnr, dfs_micro

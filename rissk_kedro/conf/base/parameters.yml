@@ -3,11 +3,12 @@ survey:
   name: "hies2024"
   questionnaires:
     - name: "snb_hies_hh"
-      versions: [9, 10, 11]
+      VERSION: [9, 10, 11]
     - name: "slbhies_listing"
-      versions: [6, 7]
+      VERSION: [6, 7]
 
-zip_password: ${oc.env:PASSWORD}
+# If set to null, the system will look for the 'PASSWORD' environment variable
+zip_password: null
 
 # Ingestion Configuration
 ingestion:
