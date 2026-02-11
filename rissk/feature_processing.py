@@ -4,9 +4,8 @@ from rissk.utils.import_utils import *
 
 class FeatureProcessing(object):
 
-    def __init__(self, survey_info, config):
-
-        #self.config = config = {k:v for k,v in config.items()}
+    def __init__(self, config):
+        self.config = config
 
         self._reload = self.config['environment']['reload']
         self._save_to_disk = self.config['environment']['save_to_disk']
