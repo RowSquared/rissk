@@ -29,6 +29,7 @@ CONFIG_LOADER_CLASS = OmegaConfigLoader
 CONFIG_LOADER_ARGS = {
     "base_env": "base",
     "default_run_env": "local",
+    "globals_pattern": "*parameters.yml",
 }
 
 # Class that manages Kedro's library components.

@@ -3,7 +3,15 @@ from pathlib import Path
 import os
 import pandas as pd
 from loguru import logger
-from rissk.utils.import_utils import get_zip_files, extract_zip, get_survey_info, get_dataframes
+from rissk.utils.import_utils import (
+    get_zip_files, 
+    extract_zip, 
+    get_survey_info, 
+    get_questionnaire,
+    get_paradata,
+    get_microdata
+)
+
 
 def unzip_survey_data_node(
     survey_name: str,
@@ -29,24 +37,110 @@ def unzip_survey_data_node(
         
     return extracted_paths
 
-def load_survey_data_node(survey_paths: List[Path]) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+
+def load_paradata_node(survey_paths: List[Path]) -> pd.DataFrame:
     """
-    Loads dataframes from extracted folders.
-    Wraps import_utils.get_dataframes which handles .dta/.tab logic.
+    Loads paradata from extracted folders.
+    Independent node that generates its own questionnaire reference.
     """
-    logger.info(f"Processing survey info for {len(survey_paths)} paths")
+    logger.info(f"Processing paradata for {len(survey_paths)} paths")
     survey_info = get_survey_info(survey_paths)
     
-    # Returns: paradata, questionnaire, microdata
-    dfs_para, dfs_qnr, dfs_micro = get_dataframes(survey_info)
-
-    if 'answer_sequence' in dfs_para.columns:
-        dfs_para['answer_sequence'] = dfs_para['answer_sequence'].apply(str)
-
-    if 'answer_sequence' in dfs_qnr.columns:
-        dfs_qnr['answer_sequence'] = dfs_qnr['answer_sequence'].apply(str)
-
-    if 'answer_sequence' in dfs_micro.columns:
-        dfs_micro['answer_sequence'] = dfs_micro['answer_sequence'].apply(str)
+    dfs_paradata = []
     
-    return dfs_para, dfs_qnr, dfs_micro
+    for survey_questionnaire, questionnaires_details in survey_info.items():
+        for questionnaires_version, file_paths in questionnaires_details.items():
+            tabular_path = file_paths['Tabular']
+            paradata_path = file_paths['Paradata']
+
+            try:
+                # We need the questionnaire map even for paradata processing
+                df_questionnaires = get_questionnaire(tabular_path)
+                df_paradata = get_paradata(paradata_path, df_questionnaires)
+                
+                dfs_paradata.append(df_paradata)
+                logger.info(f"Loaded paradata for {survey_questionnaire} v{questionnaires_version}")
+            except Exception as e:
+                logger.error(f"Failed to load paradata for {survey_questionnaire} v{questionnaires_version}. Skipping. Error: {str(e)}")
+                continue
+
+    if not dfs_paradata:
+        return pd.DataFrame()
+
+    combined_df = pd.concat(dfs_paradata)
+    combined_df.reset_index(drop=True, inplace=True)
+    
+    if 'answer_sequence' in combined_df.columns:
+        combined_df['answer_sequence'] = combined_df['answer_sequence'].apply(str)
+        
+    return combined_df
+
+
+def load_questionnaire_node(survey_paths: List[Path]) -> pd.DataFrame:
+    """
+    Loads questionnaire metadata from extracted folders.
+    """
+    logger.info(f"Processing questionnaires for {len(survey_paths)} paths")
+    survey_info = get_survey_info(survey_paths)
+    
+    dfs_questionnaires = []
+    
+    for survey_questionnaire, questionnaires_details in survey_info.items():
+        for questionnaires_version, file_paths in questionnaires_details.items():
+            tabular_path = file_paths['Tabular']
+
+            try:
+                df_questionnaires = get_questionnaire(tabular_path)
+                dfs_questionnaires.append(df_questionnaires)
+                logger.info(f"Loaded questionnaire for {survey_questionnaire} v{questionnaires_version}")
+            except Exception as e:
+                logger.error(f"Failed to load questionnaire for {survey_questionnaire} v{questionnaires_version}. Skipping. Error: {str(e)}")
+                continue
+
+    if not dfs_questionnaires:
+        return pd.DataFrame()
+
+    combined_df = pd.concat(dfs_questionnaires)
+    combined_df.reset_index(drop=True, inplace=True)
+    
+    if 'answer_sequence' in combined_df.columns:
+        combined_df['answer_sequence'] = combined_df['answer_sequence'].apply(str)
+        
+    return combined_df
+
+
+def load_microdata_node(survey_paths: List[Path]) -> pd.DataFrame:
+    """
+    Loads microdata (answers) from extracted folders.
+    Independent node that generates its own questionnaire reference.
+    """
+    logger.info(f"Processing microdata for {len(survey_paths)} paths")
+    survey_info = get_survey_info(survey_paths)
+    
+    dfs_microdata = []
+    
+    for survey_questionnaire, questionnaires_details in survey_info.items():
+        for questionnaires_version, file_paths in questionnaires_details.items():
+            tabular_path = file_paths['Tabular']
+
+            try:
+                # We need the questionnaire map for variable types and structure
+                df_questionnaires = get_questionnaire(tabular_path)
+                df_microdata = get_microdata(tabular_path, df_questionnaires)
+                
+                dfs_microdata.append(df_microdata)
+                logger.info(f"Loaded microdata for {survey_questionnaire} v{questionnaires_version}")
+            except Exception as e:
+                logger.error(f"Failed to load microdata for {survey_questionnaire} v{questionnaires_version}. Skipping. Error: {str(e)}")
+                continue
+
+    if not dfs_microdata:
+        return pd.DataFrame()
+
+    combined_df = pd.concat(dfs_microdata)
+    combined_df.reset_index(drop=True, inplace=True)
+    
+    if 'answer_sequence' in combined_df.columns:
+        combined_df['answer_sequence'] = combined_df['answer_sequence'].apply(str)
+        
+    return combined_df

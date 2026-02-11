@@ -1,5 +1,10 @@
 from kedro.pipeline import Pipeline, node, pipeline
-from .nodes import unzip_survey_data_node, load_survey_data_node
+from .nodes import (
+    unzip_survey_data_node, 
+    load_paradata_node, 
+    load_questionnaire_node, 
+    load_microdata_node
+)
 
 def create_pipeline(**kwargs) -> Pipeline:
     return pipeline([
@@ -15,9 +20,21 @@ def create_pipeline(**kwargs) -> Pipeline:
             name="unzip_survey_data_node"
         ),
         node(
-            func=load_survey_data_node,
+            func=load_paradata_node,
             inputs="extracted_survey_paths",
-            outputs=["paradata_interim", "raw_questionnaire", "raw_microdata"],
-            name="load_survey_data_node"
+            outputs="paradata_interim",
+            name="load_paradata_node"
+        ),
+        node(
+            func=load_questionnaire_node,
+            inputs="extracted_survey_paths",
+            outputs="raw_questionnaire",
+            name="load_questionnaire_node"
+        ),
+        node(
+            func=load_microdata_node,
+            inputs="extracted_survey_paths",
+            outputs="raw_microdata",
+            name="load_microdata_node"
         )
     ])
