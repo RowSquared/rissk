@@ -3,15 +3,15 @@
 # === PRIMARY (Ingested DataFrames) ===
 paradata_interim:
   type: pandas.ParquetDataset
-  filepath: data/${survey.name}/latest/20_INTERIM/paradata.parquet
+  filepath: data/hies2024/latest/20_INTERIM/paradata.parquet
 
 raw_questionnaire:
   type: pandas.ParquetDataset
-  filepath: data/${survey.name}/latest/30_PROCESSED/questionnaire.parquet
+  filepath: data/hies2024/latest/30_PROCESSED/questionnaire.parquet
 
 raw_microdata:
   type: pandas.ParquetDataset
-  filepath: data/${survey.name}/latest/30_PROCESSED/microdata.parquet
+  filepath: data/hies2024/latest/30_PROCESSED/microdata.parquet
 
 # # === FEATURE PROCESSED ===
 # paradata_processed:

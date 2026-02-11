@@ -7,12 +7,12 @@ survey:
     - name: "slbhies_listing"
       VERSION: [6, 7]
 
-# If set to null, the system will look for the 'PASSWORD' environment variable
-zip_password: null
-
 # Ingestion Configuration
 ingestion:
-  raw_data_path: "data/10_RAW"
+  raw_data_path: "data/hies2024/latest/10_RAW"      
+
+# If set to null, the system will look for the 'PASSWORD' environment variable
+zip_password: null
 
 # Processing Parameters
 processing:
