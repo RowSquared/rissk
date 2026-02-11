@@ -17,6 +17,21 @@ In order to get the best out of the template:
 * Don't commit data to your repository
 * Don't commit any credentials or your local configuration to your repository. Keep all your credentials and local configuration in `conf/local/`
 
+## Configuration & Secrets
+
+### Data Encryption
+To handle password-protected zip files in the ingestion pipeline, you must provide the password locally.
+Do NOT commit this password to version control.
+
+1. Create or edit `conf/local/parameters.yml` (this file is git-ignored).
+2. Add the following key:
+
+```yaml
+zip_password: "your_actual_password_here"
+```
+
+If this value is left as `null` (or missing from local config), the system will attempt to read the `PASSWORD` environment variable.
+
 ## How to install dependencies
 
 Declare any dependencies in `requirements.txt` for `pip` installation.
