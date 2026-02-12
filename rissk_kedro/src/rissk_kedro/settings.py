@@ -8,7 +8,7 @@ https://docs.kedro.org/en/stable/kedro_project_setup/settings.html."""
 HOOKS = ()
 
 # Installed plugins for which to disable hook auto-registration.
-# DISABLE_HOOKS_FOR_PLUGINS = ("kedro-viz",)
+DISABLE_HOOKS_FOR_PLUGINS = ("kedro-viz",)
 
 # Class that manages storing KedroSession data.
 # from kedro.framework.session.store import BaseSessionStore
@@ -23,6 +23,17 @@ HOOKS = ()
 
 # Class that manages how configuration is loaded.
 from kedro.config import OmegaConfigLoader  # noqa: E402
+
+try:  # noqa: E402
+    from kedro_viz.integrations.kedro import hooks as kedro_viz_hooks
+
+    if (
+        hasattr(kedro_viz_hooks, "dataset_stats_hook")
+        and not hasattr(kedro_viz_hooks.dataset_stats_hook, "datasets")
+    ):
+        kedro_viz_hooks.dataset_stats_hook.datasets = {}
+except Exception:
+    pass
 
 CONFIG_LOADER_CLASS = OmegaConfigLoader
 # Keyword arguments to pass to the `CONFIG_LOADER_CLASS` constructor.

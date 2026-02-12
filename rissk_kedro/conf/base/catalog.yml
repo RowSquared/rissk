@@ -1,12 +1,12 @@
 # Here you can define all your data sets by using simple YAML syntax.
 #
 # === INTERMEDIATE (Extracted Files) ===
-extracted_survey_data:
-  type: PartitionedDataset
-  path: data/hies2024/latest/10_RAW
-  dataset:
-    type: kedro.extras.datasets.text.TextDataset
-  filename_suffix: ""
+# extracted_survey_data:
+#   type: PartitionedDataset
+#   path: data/hies2024/latest/10_RAW
+#   dataset:
+#     type: kedro.extras.datasets.text.TextDataset
+#   filename_suffix: ""
 
 # === PRIMARY (Ingested DataFrames) ===
 paradata_interim:
