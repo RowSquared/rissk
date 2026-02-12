@@ -6,7 +6,7 @@ defaults:
 export_path: .
 
 output_file: results/unit_risk_score.csv
-feature_score: false
+feature_score: true
 
 surveys: [ifad_tunesia]
 survey_version: 'EndlineFINALV106_1'
@@ -80,7 +80,7 @@ features:
     parameters:
       contamination: 0.11
   total_elapse:
-    use: true
+    use: false
     parameters:
       contamination: 0.11
   single_question:
