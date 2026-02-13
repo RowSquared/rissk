@@ -1,6 +1,7 @@
 # Here you can define all your data sets by using simple YAML syntax.
 #
 # === INTERMEDIATE (Extracted Files) ===
+# This is no better than parametrized raw path. We need to think of a better way if we want catalogue
 # extracted_survey_data:
 #   type: PartitionedDataset
 #   path: data/hies2024/latest/10_RAW
@@ -21,40 +22,41 @@ raw_microdata:
   type: pandas.ParquetDataset
   filepath: data/hies2024/latest/30_PROCESSED/microdata.parquet
 
-# # === FEATURE PROCESSED ===
-# paradata_processed:
-#   type: pandas.ParquetDataset
-#   filepath: data/${survey.name}/latest/30_PROCESSED/paradata_processed.parquet
+paradata_processed:
+  type: pandas.ParquetDataset
+  filepath: data/hies2024/latest//30_PROCESSED/paradata_processed.parquet
 
-# paradata_active:
-#   type: pandas.ParquetDataset
-#   filepath: data/${survey.name}/latest/30_PROCESSED/paradata_active.parquet
+paradata_active:
+  type: pandas.ParquetDataset
+  filepath: data/hies2024/latest/30_PROCESSED/paradata_active.parquet
+
+# === FEATURE PROCESSED ===
 
 # item_features:
 #   type: pandas.ParquetDataset
-#   filepath: data/${survey.name}/latest/30_PROCESSED/item_features.parquet
+#   filepath: data/hies2024/latest/30_PROCESSED/item_features.parquet
 
 # unit_features:
 #   type: pandas.ParquetDataset
-#   filepath: data/${survey.name}/latest/30_PROCESSED/unit_features.parquet
+#   filepath: data/hies2024/latest/30_PROCESSED/unit_features.parquet
 
 # unit_risk_scores_raw:
 #   type: pandas.ParquetDataset
-#   filepath: data/${survey.name}/latest/30_PROCESSED/unit_risk_scores_raw.parquet
+#   filepath: data/hies2024/latest/30_PROCESSED/unit_risk_scores_raw.parquet
 
 # responsible_features:
 #   type: pandas.ParquetDataset
-#   filepath: data/${survey.name}/latest/30_PROCESSED/responsible_features.parquet
+#   filepath: data/hies2024/latest/30_PROCESSED/responsible_features.parquet
 
 # # === MODEL OUTPUT ===
 # unit_risk_scores:
 #   type: pandas.CSVDataset
-#   filepath: data/${survey.name}/latest/40_OUTPUTS/unit_risk_scores.csv
+#   filepath: data/hies2024/latest/40_OUTPUTS/unit_risk_scores.csv
 #   save_args:
 #     index: false
 
 # unit_feature_scores:
 #   type: pandas.CSVDataset
-#   filepath: data/${survey.name}/latest/40_OUTPUTS/unit_feature_scores.csv
+#   filepath: data/hies2024/latest/40_OUTPUTS/unit_feature_scores.csv
 #   save_args:
 #     index: false

@@ -5,29 +5,29 @@ from typing import Dict
 from loguru import logger
 
 
-def process_paradata_timestamps(
-    paradata_raw: pd.DataFrame
+def process_paradata_node(
+    paradata_interim: pd.DataFrame,
+    parameters: Dict
 ) -> pd.DataFrame:
     """
-    Process paradata timestamps and add hour features.
-    
-    This replicates logic from pipelines/feature_engineering/10_process_paradata.py
+    Process paradata timestamps, flags, and index creation.
     
     Args:
-        paradata_raw: Raw paradata DataFrame
+        paradata_interim: Interim paradata DataFrame
+        parameters: Pipeline parameters
         
     Returns:
-        Processed paradata with timestamp features
+        Processed paradata DataFrame
     """
-    paradata = paradata_raw.copy()
+    paradata = paradata_interim.copy()
     
-    # Add answer hour feature (from 10_process_paradata.py line 29)
+    # Calculate f__answer_hour_set
     paradata['f__answer_hour_set'] = (
         paradata['timestamp_local'].dt.hour + 
         paradata['timestamp_local'].dt.round('30min').dt.minute / 60
     )
     
-    # Mark interviewing events (before Supervisor/HQ interaction)
+    # Calculate interviewing flag
     events_split = ['RejectedBySupervisor', 'OpenedBySupervisor', 'OpenedByHQ', 'RejectedByHQ']
     paradata['flag'] = paradata['event'].isin(events_split)
     
@@ -35,46 +35,81 @@ def process_paradata_timestamps(
     paradata['cumulative_flag'] = paradata.groupby('interview__id')['flag'].cumsum()
     paradata['interviewing'] = np.where(paradata['cumulative_flag'] > 0, False, True)
     
-    logger.info(f"Processed {len(paradata)} paradata records with timestamp features")
+    # Filter interviewing == True AND role == 1
+    paradata.drop(['flag', 'cumulative_flag'], axis=1, inplace=True)
+    paradata = paradata[(paradata['interviewing'] == True) & (paradata['role'] == 1)].copy()
+    
+    # Implement make_index_col logic (concat ID parts)
+    # Using '_' separator to match previous notebook logic
+    def make_index_col(df):
+        mask = (~df[['interview__id', 'variable_name', 'roster_level']].isnull()) & \
+                (df[['interview__id', 'variable_name', 'roster_level']] != '')
+        filtered_df = df.where(mask, '')
+        df['index_col'] = (
+            filtered_df['interview__id'].astype(str) + "_" +
+            filtered_df['variable_name'].astype(str) + "_" +
+            filtered_df['roster_level'].astype(str)
+        )
+        df['index_col'] = df['index_col'].str.strip('_')
+        return df
+    
+    paradata = make_index_col(paradata)
+    
+    # Sort by interview__id, order
+    paradata.sort_values(['interview__id', 'order'], inplace=True)
+    
+    # Limit Unit Logic
+    limit_unit = parameters.get('processing', {}).get('limit_unit')
+    if limit_unit is not None:
+        consent_variable = next(iter(limit_unit))
+        consent_value = str(limit_unit[consent_variable])
+        
+        cond1 = (paradata['variable_name'] == consent_variable)
+        cond2 = (paradata['answer'] == consent_value)
+        
+        filtered_interview_id = paradata[cond1 & cond2]['interview__id'].unique()
+        paradata = paradata[paradata['interview__id'].isin(filtered_interview_id)].copy()
     
     return paradata
 
 
-def filter_active_events(
+def filter_active_paradata_node(
     paradata_processed: pd.DataFrame,
     parameters: Dict
 ) -> pd.DataFrame:
     """
-    Filter paradata to active interviewer events.
-    
-    Replicates logic from pipelines/feature_engineering/11_process_paradata_active.py
+    Filter paradata to active events.
     
     Args:
-        paradata_processed: Processed paradata
-        parameters: Config parameters (for limit_unit)
+        paradata_processed: Processed paradata DataFrame
+        parameters: Pipeline parameters
         
     Returns:
-        DataFrame with only active interviewer events
+        Active paradata DataFrame
     """
     active_events = [
         'InterviewCreated', 'AnswerSet', 'Resumed', 
         'AnswerRemoved', 'CommentSet', 'Restarted'
     ]
     
-    # Filter to active events
+    # Filter conditions
     active_mask = (
-        paradata_processed['event'].isin(active_events) &
-        paradata_processed['interviewing']
+        (paradata_processed['event'].isin(active_events)) &
+        (paradata_processed['question_scope'].isin([0, ''])) &
+        (paradata_processed['role'] == 1)
     )
     
-    # Apply limit_unit filter if specified
-    limit_unit = parameters.get('processing', {}).get('limit_unit')
-    if limit_unit is not None:
-        active_mask = active_mask & (paradata_processed['interview__id'].isin(limit_unit))
+    vars_needed = [
+        'interview__id', 'order', 'event', 'responsible', 'role', 'tz_offset',
+        'param', 'answer', 'roster_level', 'timestamp_local', 'variable_name',
+        'question_sequence', 'question_scope', "qtype", 'question_type',
+        'qnr', 'qnr_version', 'interviewing', 'yes_no_view', 'index_col', 'f__answer_hour_set'
+    ]
     
-    df_para_active = paradata_processed[active_mask].copy()
+    # Only keep columns present in the dataframe
+    vars_needed = [col for col in vars_needed if col in paradata_processed.columns]
     
-    logger.info(f"Filtered to {len(df_para_active)} active events")
+    df_para_active = paradata_processed.loc[active_mask, vars_needed].copy()
     
     return df_para_active
 
@@ -88,8 +123,6 @@ def build_item_features(
     """
     Build item-level features from microdata and paradata.
     
-    Uses logic from pipelines/feature_engineering/12_process_items.py
-    
     Args:
         microdata_raw: Raw microdata
         paradata_active: Active paradata events
@@ -102,39 +135,55 @@ def build_item_features(
     logger.info("Building item-level features")
     
     # Create index column for joining
+    # Updated separator to '_' to match process_paradata_node
     def make_index_col(df):
         mask = (~df[['interview__id', 'variable_name', 'roster_level']].isnull()) & \
                 (df[['interview__id', 'variable_name', 'roster_level']] != '')
         filtered_df = df.where(mask, '')
         df['index_col'] = (
-            filtered_df['interview__id'].astype(str) + '__' +
-            filtered_df['variable_name'].astype(str) + '__' +
+            filtered_df['interview__id'].astype(str) + '_' +
+            filtered_df['variable_name'].astype(str) + '_' +
             filtered_df['roster_level'].astype(str)
         )
+        df['index_col'] = df['index_col'].str.strip('_')
         return df
     
+    if microdata_raw.empty:
+        logger.warning("Microdata is empty")
+        return pd.DataFrame()
+
     microdata = make_index_col(microdata_raw.copy())
     
     # Select relevant columns
     item_level_columns = ['interview__id', 'variable_name', 'roster_level']
-    df_item = microdata[['value', "qtype", 'is_integer', 'qnr_seq',
-                         'n_answers', 'answer_sequence',
-                         'cascade_from_question_id', 'is_filtered_combobox',
-                         'index_col'] + item_level_columns].copy()
+    
+    # Identify available columns from the desired list
+    desired_cols = ['value', "qtype", 'is_integer', 'qnr_seq',
+                    'n_answers', 'answer_sequence',
+                    'cascade_from_question_id', 'is_filtered_combobox',
+                    'index_col'] + item_level_columns
+                    
+    available_cols = [c for c in desired_cols if c in microdata.columns]
+    
+    df_item = microdata[available_cols].copy()
     
     # Merge with active paradata
     paradata_columns = ['responsible', 'f__answer_hour_set', 'interviewing', 'tz_offset']
     answer_set_mask = (paradata_active['event'] == 'AnswerSet')
     data = paradata_active[answer_set_mask].drop_duplicates(subset='index_col', keep='last')
     
+    # Filter paradata columns to those present in data
+    available_para_cols = [col for col in paradata_columns if col in data.columns]
+    
     df_item = df_item.merge(
-        data[paradata_columns + ['index_col']], 
+        data[available_para_cols + ['index_col']], 
         how='left',
         on='index_col'
     )
     
-    # Keep only interviewing events
-    df_item = df_item[df_item['interviewing'] == True]
+    # Keep only interviewing events if column exists
+    if 'interviewing' in df_item.columns:
+        df_item = df_item[df_item['interviewing'] == True]
     
     logger.info(f"Built {len(df_item)} item feature records")
     
@@ -148,8 +197,6 @@ def build_unit_features(
     """
     Build unit-level (interview-level) features.
     
-    Uses logic from rissk/feature_processing.py make_df_unit method.
-    
     Args:
         paradata_active: Active paradata
         parameters: Configuration
@@ -157,16 +204,31 @@ def build_unit_features(
     Returns:
         DataFrame with unit-level features
     """
-    df_unit = paradata_active[[
-        'interview__id', 'responsible', 'survey_name', 'survey_version'
-    ]].copy()
+    # Use qnr/qnr_version as survey_name/survey_version
+    cols_map = {
+        'interview__id': 'interview__id',
+        'responsible': 'responsible',
+        'qnr': 'survey_name',
+        'qnr_version': 'survey_version'
+    }
+    
+    # Only select columns that exist
+    available_cols = [c for c in cols_map.keys() if c in paradata_active.columns]
+    
+    df_unit = paradata_active[available_cols].copy()
+    
+    # Rename columns to match expected output
+    df_unit.rename(columns=cols_map, inplace=True)
     
     df_unit.drop_duplicates(inplace=True)
-    df_unit = df_unit[
-        (df_unit['responsible'] != '') & 
-        (~pd.isnull(df_unit['responsible']))
-    ]
+    
+    if 'responsible' in df_unit.columns:
+        df_unit = df_unit[
+            (df_unit['responsible'] != '') & 
+            (~pd.isnull(df_unit['responsible']))
+        ]
     
     logger.info(f"Built {len(df_unit)} unit records")
     
     return df_unit
+

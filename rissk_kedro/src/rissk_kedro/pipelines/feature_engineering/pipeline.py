@@ -1,8 +1,8 @@
 """Feature engineering pipeline definition."""
 from kedro.pipeline import Pipeline, node, pipeline
 from .nodes import (
-    process_paradata_timestamps,
-    filter_active_events,
+    process_paradata_node,
+    filter_active_paradata_node,
     build_item_features,
     build_unit_features
 )
@@ -16,20 +16,20 @@ def create_pipeline(**kwargs) -> Pipeline:
     """
     return pipeline([
         node(
-            func=process_paradata_timestamps,
-            inputs="paradata_raw",
+            func=process_paradata_node,
+            inputs=["paradata_interim", "parameters"],
             outputs="paradata_processed",
-            name="process_timestamps_node",
+            name="process_paradata_node",
         ),
         node(
-            func=filter_active_events,
+            func=filter_active_paradata_node,
             inputs=["paradata_processed", "parameters"],
             outputs="paradata_active",
-            name="filter_active_events_node",
+            name="filter_active_paradata_node",
         ),
         node(
             func=build_item_features,
-            inputs=["microdata_raw", "paradata_active", "questionnaire_raw", "parameters"],
+            inputs=["raw_microdata", "paradata_active", "raw_questionnaire", "parameters"],
             outputs="item_features",
             name="build_item_features_node",
         ),
