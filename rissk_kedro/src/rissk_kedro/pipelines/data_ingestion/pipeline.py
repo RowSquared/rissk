@@ -12,11 +12,12 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=extract_zip_files_node,
             inputs=[
-                "params:ingestion.raw_data_path",
+                "survey_partitions",
                 "params:zip_password"
             ],
             outputs=None,
-            name="extract_zip_files_node"
+            name="extract_zip_files_node",
+            tags=["unzip_files"]
         ),
         node(
             func=filter_extracted_survey_paths_node,

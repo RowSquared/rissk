@@ -1,13 +1,12 @@
 # Here you can define all your data sets by using simple YAML syntax.
 #
-# === INTERMEDIATE (Extracted Files) ===
-# This is no better than parametrized raw path. We need to think of a better way if we want catalogue
-# extracted_survey_data:
-#   type: PartitionedDataset
-#   path: data/hies2024/latest/10_RAW
-#   dataset:
-#     type: kedro.extras.datasets.text.TextDataset
-#   filename_suffix: ""
+# === INTERMEDIATE (Raw Data Files) ===
+survey_partitions:
+  type: partitions.PartitionedDataset
+  path: data/hies2024/latest/10_RAW
+  dataset:
+    type: binary.BinaryDataset
+  filename_suffix: ""
 
 # === PRIMARY (Ingested DataFrames) ===
 paradata_interim:

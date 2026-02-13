@@ -1,29 +1,28 @@
-from typing import Dict, List
 from pathlib import Path
+from typing import Any, Callable, Dict, List
 import pandas as pd
 from loguru import logger
-from rissk.import_utils_kedro import extract_all_zip_files, filter_matching_folders
+from rissk.utils.import_utils_kedro import extract_all_zip_files, filter_matching_folders
 from rissk.utils.import_utils import get_survey_info, get_questionnaire, get_paradata, get_microdata
 
 
-def extract_zip_files_node(raw_path_str: str, zip_password: str) -> None:
+def extract_zip_files_node(survey_partitions: Dict[str, Callable[[], Any]], zip_password: str) -> None:
     """
-    Extract all top-level zip files in the raw data path.
+    Extract zip files referenced by the survey partition dataset.
     Procedural node: extraction side-effect only.
     """
-    raw_path = Path(raw_path_str)
-    logger.info(f"Extracting zip files from {raw_path}")
-    extract_all_zip_files(raw_path, zip_password=zip_password)
+    logger.info(f"Extracting zip files from {len(survey_partitions)} partition entries")
+    extract_all_zip_files(survey_partitions, zip_password=zip_password)
 
 
-def filter_extracted_survey_paths_node(raw_path_str: str, questionnaires: List[Dict]) -> List[Path]:
+def filter_extracted_survey_paths_node(survey_partitions: Dict[str, Callable[[], Any]], questionnaires: List[Dict]) -> List[Path]:
     """
-    Return extracted folder paths matching questionnaire/version patterns.
+    Return extracted folder paths matching questionnaire/version patterns
+    using survey partition entries.
     This node does not perform extraction.
     """
-    raw_path = Path(raw_path_str)
-    logger.info(f"Collecting matching survey folders from {raw_path}")
-    return filter_matching_folders(raw_path, questionnaires)
+    logger.info(f"Collecting matching survey folders from {len(survey_partitions)} partition entries")
+    return filter_matching_folders(survey_partitions, questionnaires)
 
 
 def load_paradata_node(file_paths: List[Path]) -> pd.DataFrame:

@@ -8,8 +8,8 @@ export_path: .
 output_file: results/unit_risk_score.csv
 feature_score: true
 
-surveys: [ifad_tunesia]
-survey_version: 'EndlineFINALV106_1'
+surveys: ["hies2024"] # [ifad_tunesia]
+survey_version: [9, 10, 11] #'EndlineFINALV106_1'
 password: null
 limit_unit: null
 

@@ -41,5 +41,5 @@ dependencies:
       - botocore==1.35.88
       - kedro==1.0.0
       - kedro-viz==12.1.0
-      - kedro-datasets[pandas-statadataset]==4.1.0
+      - kedro-datasets==4.1.0
       - -e .
