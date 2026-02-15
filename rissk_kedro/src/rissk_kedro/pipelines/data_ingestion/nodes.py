@@ -2,17 +2,23 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List
 import pandas as pd
 from loguru import logger
-from rissk.utils.import_utils_kedro import extract_all_zip_files, filter_matching_folders
-from rissk.utils.import_utils import get_survey_info, get_questionnaire, get_paradata, get_microdata
+from rissk.utils.import_utils_kedro import (
+    extract_all_zip_files, 
+    filter_matching_folders,
+    get_survey_info, 
+    get_questionnaire, 
+    get_paradata, 
+    get_microdata
+)
 
 
-def extract_zip_files_node(survey_partitions: Dict[str, Callable[[], Any]], zip_password: str) -> None:
+def extract_zip_files_node(survey_zip_partitions: Dict[str, Callable[[], Any]], zip_password: str) -> None:
     """
     Extract zip files referenced by the survey partition dataset.
     Procedural node: extraction side-effect only.
     """
-    logger.info(f"Extracting zip files from {len(survey_partitions)} partition entries")
-    extract_all_zip_files(survey_partitions, zip_password=zip_password)
+    logger.info(f"Extracting zip files from {len(survey_zip_partitions)} partition entries")
+    extract_all_zip_files(survey_zip_partitions, zip_password=zip_password)
 
 
 def filter_extracted_survey_paths_node(survey_partitions: Dict[str, Callable[[], Any]], questionnaires: List[Dict]) -> List[Path]:

@@ -1,14 +1,23 @@
 # Here you can define all your data sets by using simple YAML syntax.
 #
-# === INTERMEDIATE (Raw Data Files) ===
-survey_partitions:
+# === RAW DATA ===
+# The source partitions (Zips)
+survey_zip_partitions:
   type: partitions.PartitionedDataset
   path: data/hies2024/latest/10_RAW
   dataset:
     type: binary.BinaryDataset
-  filename_suffix: ""
+  filename_suffix: ".zip"
 
-# === PRIMARY (Ingested DataFrames) ===
+# The extracted result (Folders)
+# Used by downstream nodes to find the directories
+extracted_survey_folders:
+  type: partitions.PartitionedDataset
+  path: data/hies2024/latest/10_RAW
+  dataset:
+    type: folder.FolderDataset
+
+# === INGESTED DataFrames ===
 paradata_interim:
   type: pandas.ParquetDataset
   filepath: data/hies2024/latest/20_INTERIM/paradata.parquet

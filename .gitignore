@@ -260,3 +260,8 @@ cython_debug/
 #.idea/
 
 embedded-assets/tmpo_c6_8gw.html
+ingestion_nstructions.md
+.gitignore
+ingestion_refactor_context.md
+rissk_kedro/stats.json
+rissk_kedro/feature_process_ploomber_pipeline_integration.md

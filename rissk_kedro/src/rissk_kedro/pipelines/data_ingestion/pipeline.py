@@ -12,7 +12,7 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=extract_zip_files_node,
             inputs=[
-                "survey_partitions",
+                "survey_zip_partitions",
                 "params:zip_password"
             ],
             outputs=None,
@@ -22,7 +22,7 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=filter_extracted_survey_paths_node,
             inputs=[
-                "params:ingestion.raw_data_path",
+                "extracted_survey_folders", # This is where the extracted folders are passed.
                 "params:survey.questionnaires",
             ],
             outputs="file_paths",

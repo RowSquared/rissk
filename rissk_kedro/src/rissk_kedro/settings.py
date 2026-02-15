@@ -42,6 +42,9 @@ CONFIG_LOADER_ARGS = {
     "default_run_env": "local",
 }
 
+# # The folder where the source code is located
+# CONF_SOURCE = "conf"
+
 # Class that manages Kedro's library components.
 # from kedro.framework.context import KedroContext
 # CONTEXT_CLASS = KedroContext
