@@ -5,6 +5,7 @@ from typing import Any, Callable, Optional
 import re
 import os
 import zipfile
+import shutil
 import json  # Added json import
 import pandas as pd  # Added pandas import
 import numpy as np   # Added numpy import
@@ -22,23 +23,18 @@ from rissk.utils.file_process_utils import (
     parse_filename
 )
 
-
 def extract_zip(file_source_path: Path, file_dest_path: Path, password: Optional[str] = None):
-    """Memory-efficient recursive extraction for Python 3.13."""
-    current_pwd = password or os.getenv('PASSWORD')
-    pwd_bytes = current_pwd.encode() if current_pwd else None
-
-    # Ensure destination exists
+    """Memory-efficient recursive extraction."""
+    pwd_bytes = password.encode() if password else None
     file_dest_path.mkdir(parents=True, exist_ok=True)
 
     try:
         with zipfile.ZipFile(file_source_path, 'r') as zip_ref:
             for file_info in zip_ref.infolist():
-                target_path = file_dest_path / file_info.filename
+                target_path = (file_dest_path / file_info.filename).resolve()
                 
-                # Prevent directory traversal vulnerability
-                if not str(target_path.resolve()).startswith(str(file_dest_path.resolve())):
-                    logger.warning(f"Skipping extraction of {file_info.filename}: path traversal attempt")
+                # Security: Prevent ZipSlip/Path Traversal
+                if not str(target_path).startswith(str(file_dest_path.resolve())):
                     continue
                 
                 if file_info.is_dir():
@@ -47,139 +43,74 @@ def extract_zip(file_source_path: Path, file_dest_path: Path, password: Optional
 
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 
-                if target_path.exists():
-                     # Optional: Skip already extracted files or overwrite
-                     pass
-
+                # Stream content to file to keep memory usage low
                 with zip_ref.open(file_info, pwd=pwd_bytes) as source, \
                      open(target_path, "wb") as target:
-                    target.write(source.read())
+                    shutil.copyfileobj(source, target)
 
+                # Recursive call for nested zips
                 if target_path.suffix.lower() == '.zip':
-                    nested_dest = target_path.with_suffix('')
-                    extract_zip(target_path, nested_dest, password=current_pwd)
-        
-        logger.info(f"Extracted: {file_source_path.name}")
+                    extract_zip(target_path, target_path.with_suffix(''), password=password)
+                    
     except Exception as e:
-        logger.error(f"Failed {file_source_path}: {e}")
+        logger.error(f"Failed to extract {file_source_path.name}: {e}")
 
 
-def _get_partition_path(partition_id: str, loader: Any) -> Optional[Path]:
+def filter_matching_folders(
+    partitions: Dict[str, Callable[[], Path]], 
+    questionnaires: List[Dict]
+) -> List[Path]:
     """
-    Robustly resolve partition path from a Kedro partition loader.
-    Compatible with Kedro 0.18+ and standard partition loaders.
-    """
-    # 1. Try to get path from loader if it's a bound method (most datasets)
-    dataset = getattr(loader, "__self__", None)
-    if dataset:
-        for attr in ("_filepath", "filepath", "path", "_path"):
-            path = getattr(dataset, attr, None)
-            if path:
-                return Path(path)
-
-    # 2. Try inspection for closures (legacy fallback)
-    try:
-        closure = getattr(loader, "__closure__", None)
-        if closure:
-            for cell in closure:
-                content = cell.cell_contents
-                for attr in ("_filepath", "filepath", "path", "_path"):
-                    path = getattr(content, attr, None)
-                    if path:
-                        return Path(path)
-    except Exception:
-        pass
-    
-    # 3. Last resort: Assume partition_id is relative to current working directory
-    # (Unlikely in Kedro context but safe fallback structure wise if ID is path-like)
-    candidate = Path(partition_id)
-    if candidate.exists():
-        return candidate
-        
-    return None
-
-
-def extract_all_zip_files(partitions: dict[str, Any], zip_password: str = None) -> None:
-    """
-    Extract all zip files referenced by Kedro partition IDs.
-    Recursively extracts nested zips.
+    Filters partition paths to return only directories that match 
+    specific questionnaire name and version patterns.
     """
     if not partitions:
-        logger.warning("No partitions found for zip extraction")
-        return
-
-    # Collect source zips
-    zip_paths: list[Path] = []
-    
-    for partition_id, loader in partitions.items():
-        # Partition keys are typically relative paths
-        # We need the absolute path to the zip file
-        
-        # Only process items that look like zips
-        if not str(partition_id).lower().endswith(".zip"):
-            continue
-            
-        zip_path = _get_partition_path(partition_id, loader)
-        
-        if zip_path and zip_path.exists():
-            zip_paths.append(zip_path)
-        else:
-            logger.warning(f"Could not resolve path for partition: {partition_id}")
-
-    logger.info(f"Found {len(zip_paths)} top-level zip files to extract")
-
-    for zip_path in zip_paths:
-        destination = zip_path.with_suffix("")
-        extract_zip(zip_path, destination, password=zip_password)
-
-
-def filter_matching_folders(partitions: dict[str, Any], questionnaires: list[dict]) -> list[Path]:
-    """
-    Return extracted folder paths matching questionnaire/version patterns.
-    Iterates over extracted folders (datasets) to find matches.
-    """
-    if not partitions:
-        logger.warning("No partitions found while filtering extracted folders")
+        logger.warning("No partitions found while filtering extracted folders.")
         return []
 
-    matching_folders: list[Path] = []
-    seen_paths = set()
-
-    # Pre-compile patterns
+    # 1. Pre-compile patterns for efficiency
+    # We use \b or strict string termination to ensure version 1 doesn't match 10
     patterns = []
     for q in questionnaires:
         name = q.get("name")
         versions = q.get("VERSION", [])
-        version_pattern = "|".join(map(str, versions))
-        # Matches: NAME_VERSION_... (e.g. slbhies_listing_6_Paradata_All)
-        patterns.append(re.compile(rf"^{name}_({version_pattern})_.*"))
-
-    logger.info(f"Scanning {len(partitions)} folder partitions against {len(patterns)} patterns")
-
-    for partition_id, loader in partitions.items():
-        partition_path_obj = Path(partition_id)
-        folder_name = partition_path_obj.name
-        
-        # Check against patterns
-        is_match = False
-        for pattern in patterns:
-            if pattern.match(folder_name):
-                is_match = True
-                break
-        
-        if not is_match:
+        if not name or not versions:
             continue
+            
+        version_pattern = "|".join(map(str, versions))
+        # Pattern: Matches start of string, the name, an underscore, 
+        # one of the versions, and then an underscore or end of string.
+        # Example: ^slbhies_listing_(1|2|6)_.*
+        regex = re.compile(rf"^{re.escape(name)}_({version_pattern})_.*")
+        patterns.append(regex)
 
-        # Resolved path
-        folder_path = _get_partition_path(partition_id, loader)
-        
-        if folder_path and folder_path.is_dir():
-            folder_str = str(folder_path.resolve())
-            if folder_str not in seen_paths:
-                seen_paths.add(folder_str)
-                matching_folders.append(folder_path)
+    matching_folders: List[Path] = []
+    seen_paths = set()
 
-    logger.info(f"Found {len(matching_folders)} matching folders")
+    # 2. Iterate and validate
+    for partition_id, loader in partitions.items():
+        try:
+            # Get the path from our FolderDataset
+            folder_path = loader()
+            
+            # CRITICAL CHECK: Ignore if it's a file (like the original .zip)
+            if not folder_path.is_dir():
+                continue
+
+            folder_name = folder_path.name
+            
+            # Check against patterns
+            if any(pattern.match(folder_name) for pattern in patterns):
+                # Use resolve() to ensure uniqueness (avoids symlink duplicates)
+                resolved_path = folder_path.resolve()
+                if resolved_path not in seen_paths:
+                    seen_paths.add(resolved_path)
+                    matching_folders.append(folder_path)
+                    
+        except Exception as e:
+            logger.error(f"Error processing partition {partition_id}: {e}")
+
+    logger.info(f"Successfully matched {len(matching_folders)} survey directories.")
     return matching_folders
 
 

@@ -1,9 +1,9 @@
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 import pandas as pd
 from loguru import logger
 from rissk.utils.import_utils_kedro import (
-    extract_all_zip_files, 
+    extract_zip, 
     filter_matching_folders,
     get_survey_info, 
     get_questionnaire, 
@@ -12,13 +12,26 @@ from rissk.utils.import_utils_kedro import (
 )
 
 
-def extract_zip_files_node(survey_zip_partitions: Dict[str, Callable[[], Any]], zip_password: str) -> None:
+def extract_zip_files_node(survey_zip_partitions: Dict[str, Callable[[], Path]], zip_password: str) -> None:
     """
-    Extract zip files referenced by the survey partition dataset.
-    Procedural node: extraction side-effect only.
+    Node that iterates through partitions and triggers extraction.
+    Note: The type hint shows the loader returns a Path.
     """
-    logger.info(f"Extracting zip files from {len(survey_zip_partitions)} partition entries")
-    extract_all_zip_files(survey_zip_partitions, zip_password=zip_password)
+    if not survey_zip_partitions:
+        logger.warning("No zip partitions found to extract.")
+        return
+
+    for partition_id, loader in survey_zip_partitions.items():
+        # 1. LOAD THE PATH (This calls FolderDataset._load)
+        zip_path = loader()
+        
+        # 2. VALIDATE & EXTRACT
+        if zip_path.suffix.lower() == ".zip" and zip_path.exists():
+            destination = zip_path.with_suffix("")
+            logger.info(f"Extracting partition [{partition_id}] from {zip_path}")
+            extract_zip(zip_path, destination, password=zip_password)
+        else:
+            logger.debug(f"Skipping non-zip partition: {partition_id}")
 
 
 def filter_extracted_survey_paths_node(survey_partitions: Dict[str, Callable[[], Any]], questionnaires: List[Dict]) -> List[Path]:

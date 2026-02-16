@@ -35,10 +35,12 @@ test = [
 ]
 
 [tool.kedro]
-package_name = "rissk"
+package_name = "rissk_kedro"
 project_name = "rissk"
 kedro_init_version = "1.2.0"
 source_dir = "src"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+[tool.kedro_telemetry]
+project_id = "63718528078e46d1bd5fa456d349edb2"
