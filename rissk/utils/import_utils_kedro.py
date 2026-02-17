@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Dict, List
 import re
 import os
 import zipfile
@@ -56,10 +56,7 @@ def extract_zip(file_source_path: Path, file_dest_path: Path, password: Optional
         logger.error(f"Failed to extract {file_source_path.name}: {e}")
 
 
-def filter_matching_folders(
-    partitions: Dict[str, Callable[[], Path]], 
-    questionnaires: List[Dict]
-) -> List[Path]:
+def filter_matching_folders(partitions: Dict[str, Callable[[], Path]], questionnaires: List[Dict]) -> List[Path]:
     """
     Filters partition paths to return only directories that match 
     specific questionnaire name and version patterns.
@@ -88,25 +85,57 @@ def filter_matching_folders(
     seen_paths = set()
 
     # 2. Iterate and validate
+    # FIX: Use partition keys to strictly identify the top-level folder relative to the root.
+    # Keys in PartitionedDataset are relative paths like "SurveyFolder/Sub/File.ext".
+    # We only check the first component ("SurveyFolder") against the regex.
+    
     for partition_id, loader in partitions.items():
         try:
-            # Get the path from our FolderDataset
-            folder_path = loader()
+            # partition_id is the relative path (e.g. "folder/sub/file.txt")
+            # We normalize it to a Path object to handle OS separators safely
+            relative_path = Path(partition_id)
             
-            # CRITICAL CHECK: Ignore if it's a file (like the original .zip)
-            if not folder_path.is_dir():
+            # We expect at least a folder and a file (parts > 1)
+            # If the zip extracted to flat files at root, this checks prevents errors.
+            if len(relative_path.parts) < 2:
                 continue
 
-            folder_name = folder_path.name
+            # The top-level folder name is the first part of the relative path
+            top_level_name = relative_path.parts[0]
             
-            # Check against patterns
-            if any(pattern.match(folder_name) for pattern in patterns):
-                # Use resolve() to ensure uniqueness (avoids symlink duplicates)
-                resolved_path = folder_path.resolve()
-                if resolved_path not in seen_paths:
-                    seen_paths.add(resolved_path)
-                    matching_folders.append(folder_path)
+            # Check if this top-level folder matches our patterns
+            is_match = False
+            for pattern in patterns:
+                if pattern.match(top_level_name):
+                    is_match = True
+                    break
+            
+            if is_match:
+                # Calculate the absolute path of the top-level folder
+                # We do this by taking the file's full path and stripping the
+                # sub-directories indicated by the relative path key.
+                file_path = loader()
+                
+                # We need to go up N levels where N = number of parts in relative path - 1
+                # Example: Key="A/B/file" (3 parts). Path=".../A/B/file". 
+                # We want ".../A". We need to go up 2 levels (file->B, B->A).
+                levels_up = len(relative_path.parts) - 1
+                
+                # parents[0] is the directory containing the file.
+                # parents[levels_up-1] is the directory we want.
+                # Path.parents sequence: [parent, parent.parent, ...]
+                # Index 0 is the immediate parent.
+                
+                if levels_up > 0 and len(file_path.parents) >= levels_up:
+                    # -1 because parents is 0-indexed (0 is 1 level up)
+                    survey_folder = file_path.parents[levels_up - 1]
                     
+                    # Double check name consistency (sanity check)
+                    if survey_folder.name == top_level_name:
+                         resolved_path = survey_folder.resolve()
+                         if resolved_path not in seen_paths:
+                            seen_paths.add(resolved_path)
+                            matching_folders.append(survey_folder)
         except Exception as e:
             logger.error(f"Error processing partition {partition_id}: {e}")
 

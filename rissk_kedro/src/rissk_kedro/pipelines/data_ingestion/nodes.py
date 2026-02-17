@@ -30,8 +30,8 @@ def extract_zip_files_node(survey_zip_partitions: Dict[str, Callable[[], Path]],
             destination = zip_path.with_suffix("")
             logger.info(f"Extracting partition [{partition_id}] from {zip_path}")
             extract_zip(zip_path, destination, password=zip_password)
-        else:
-            logger.debug(f"Skipping non-zip partition: {partition_id}")
+        # else:
+        #     logger.debug(f"Skipping non-zip partition: {partition_id}")
 
 
 def filter_extracted_survey_paths_node(survey_partitions: Dict[str, Callable[[], Any]], questionnaires: List[Dict]) -> List[Path]:
