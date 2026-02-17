@@ -22,7 +22,7 @@ def extract_zip_files_node(survey_zip_partitions: Dict[str, Callable[[], Path]],
         return
 
     for partition_id, loader in survey_zip_partitions.items():
-        # 1. LOAD THE PATH (This calls FolderDataset._load)
+        # 1. LOAD THE PATH (This calls PathDataset._load)
         zip_path = loader()
         
         # 2. VALIDATE & EXTRACT

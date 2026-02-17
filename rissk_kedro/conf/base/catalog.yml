@@ -6,7 +6,7 @@ survey_zip_partitions:
   type: partitions.PartitionedDataset
   path: data/hies2024/latest/10_RAW
   dataset:
-    type: rissk_kedro.datasets.FolderDataset
+    type: rissk_kedro.datasets.PathDataset
     filename_suffix: ".zip"
 
 # The extracted result (Folders)
@@ -15,7 +15,7 @@ extracted_survey_folders:
   type: partitions.PartitionedDataset
   path: data/hies2024/latest/10_RAW
   dataset:
-    type: rissk_kedro.datasets.FolderDataset
+    type: rissk_kedro.datasets.PathDataset
 
 # === INGESTED DataFrames ===
 paradata_interim:

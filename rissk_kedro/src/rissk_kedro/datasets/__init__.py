@@ -1,1 +1,1 @@
-from .folder import FolderDataset
+from .path import PathDataset

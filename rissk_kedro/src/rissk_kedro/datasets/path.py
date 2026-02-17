@@ -3,11 +3,17 @@ from pathlib import Path
 from typing import Any
 from kedro.io import AbstractDataset
 
-class FolderDataset(AbstractDataset[Path, Path]):
+class PathDataset(AbstractDataset[Path, Path]):
     """
     A Kedro dataset that returns the Path to a file or directory.
-    Perfect for PartitionedDatasets where the node needs the file path 
+    Perfect for PartitionedDatasets where the node needs the file path
     to perform custom operations (like unzipping).
+
+    Note: the Kedro implementation that uses this dataset performs a
+    "walk" over the target path and therefore returns all file paths
+    underneath the directory (i.e., a recursive listing). This
+    dataset exposes the `Path` object; downstream nodes should handle
+    whether the path is a file or directory and act accordingly.
     """
     def __init__(self, filepath: str, **kwargs: Any):
         self._filepath = Path(filepath)
