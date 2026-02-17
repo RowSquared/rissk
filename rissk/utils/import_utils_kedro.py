@@ -12,7 +12,7 @@ import numpy as np   # Added numpy import
 
 from loguru import logger
 
-from rissk.utils.file_process_utils import (
+from rissk.utils.file_process_utils_kedro import (
     get_file_parts, 
     transform_multi,
     set_qnr_version, 
@@ -332,17 +332,23 @@ def read_microdata_file(data_path: Path, file_name: str) -> pd.DataFrame:
                  # convert_categoricals=False matches legacy beahvior
                 df = pd.read_stata(f, convert_categoricals=False, convert_missing=True)
             
-            # Vectorized replacement is faster
-            # Replace '.a' Stata missing value with -999999999
-            # Replace '.' Stata missing value with NaN
-            # Use strict type checking or conversion to string if mixed
-            
-            # Safety: ensure we don't fail if column is all numeric types (no '.a')
-            # convert to object if needed? usually .dta loads with correct types or object if strings exist
-            
-            # Legacy logic: df.astype(str) != '.a' -> expensive full copy?
-            # Better: replace specific values
-            df.replace({'.a': -999999999, '.': np.nan}, inplace=True)
+            # Handle StataMissingValue objects which are unhashable
+            # Replace '.a' with -999999999 and '.' with NaN
+            from pandas.io.stata import StataMissingValue
+
+            def replace_stata_missing(val):
+                if isinstance(val, StataMissingValue):
+                    s_val = str(val)
+                    if s_val == '.a':
+                        return -999999999
+                    elif s_val == '.':
+                        return np.nan
+                    return np.nan # defaulting other missing values to NaN
+                return val
+
+            # Apply only to object columns where StataMissingValue might exist
+            for col in df.select_dtypes(include=['object']).columns:
+                df[col] = df[col].apply(replace_stata_missing)
             
         except Exception as e:
             logger.error(f"Error reading {file_path}: {e}")
@@ -439,12 +445,21 @@ def get_microdata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFr
     
     def is_valid_fast(val):
         if val is None: return False
-        if isinstance(val, (list, tuple)): return True # Not empty list check? Legacy said 'return True' commented 'bool(value)'
-        if val == '': return False
+        if isinstance(val, (list, tuple)): return len(val) > 0 # Empty list should be invalid? Legacy: 'return True'
+        if isinstance(val, (np.ndarray,)): return val.size > 0
+        if isinstance(val, str) and val == '': return False
+        # Fallback for other types where equality might be array-like (though unlikely for scalars)
+        if hasattr(val, 'size') and hasattr(val, 'shape'): # duck typing for arrays
+             return val.size > 0
+        
         try:
              if pd.isna(val): return False
         except:
-             pass # list not hashable for isna sometimes?
+             pass 
+        
+        # Check for empty string equality safely
+        if str(val) == '': return False
+        
         return True
 
     combined_df = combined_df[combined_df['value'].apply(is_valid_fast)]
@@ -485,6 +500,22 @@ def get_microdata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFr
 
     combined_df.reset_index(drop=True, inplace=True)
     combined_df.columns = [normalize_column_name(c) for c in combined_df.columns]
-    combined_df['value'] = combined_df['value'].astype(str)
+    # Normalize float values that are actually integers (e.g. 1.0 -> 1) before string conversion
+    # This ensures "107080102.0" becomes "107080102" matching legacy output
+    def normalize_and_stringify(val):
+        if isinstance(val, float) and val.is_integer():
+             return str(int(val))
+        if isinstance(val, (list, tuple, np.ndarray)):
+             # If it's a list (from transform_multi), we might need to normalize internal floats tool?
+             # Legacy code just did astype(str), which calls str(val).
+             # str([1.0, 2.0]) -> "[1.0, 2.0]"
+             # str([1, 2]) -> "[1, 2]"
+             # So we might need to clean up lists too if we want exact match.
+             # However, let's stick to scalar normalization first as that's the primary complaint.
+             return str(val)
+        return str(val)
+
+    # Use apply for robust conversion
+    combined_df['value'] = combined_df['value'].apply(normalize_and_stringify)
     
     return combined_df
