@@ -45,6 +45,8 @@ def process_paradata_node(
         mask = (~df[['interview__id', 'variable_name', 'roster_level']].isnull()) & \
                 (df[['interview__id', 'variable_name', 'roster_level']] != '')
         filtered_df = df.where(mask, '')
+
+        # Concatenate the columns with an underscore separator
         df['index_col'] = (
             filtered_df['interview__id'].astype(str) + "_" +
             filtered_df['variable_name'].astype(str) + "_" +
@@ -57,6 +59,7 @@ def process_paradata_node(
     
     # Sort by interview__id, order
     paradata.sort_values(['interview__id', 'order'], inplace=True)
+    paradata.reset_index(drop=True, inplace=True)
     
     # Limit Unit Logic
     limit_unit = parameters.get('processing', {}).get('limit_unit')
@@ -85,13 +88,16 @@ def filter_active_paradata_node(
         parameters: Pipeline parameters
         
     Returns:
-        Active paradata DataFrame
+        Active paradata DataFrame: keep active events, prior rejection/review events, for questions with scope interviewer
     """
     active_events = [
         'InterviewCreated', 'AnswerSet', 'Resumed', 
         'AnswerRemoved', 'CommentSet', 'Restarted'
     ]
-    
+    # only keep events done by interview (in most cases this should be all, after above filters,
+    # just in case supervisor or HQ answered something while interviewer answered on web mode)
+    # keep active events, prior rejection/review events, for questions with scope interviewer    
+
     # Filter conditions
     active_mask = (
         (paradata_processed['event'].isin(active_events)) &

@@ -1,17 +1,14 @@
-# Survey Configuration (from env.yaml)
+# Survey Configuration has to be defined in globals.yml
 survey:
-  name: "hies2024"
-  questionnaires:
-    - name: "snb_hies_hh"
-      VERSION: [9, 10, 11]
-    - name: "slbhies_listing"
-      VERSION: [6, 7]
+  # This tells Kedro to pull the entire block from globals.yml
+  questionnaires: ${globals:survey.questionnaires}
 
-# Ingestion Configuration
-ingestion:
-  raw_data_path: "data/hies2024/latest/10_RAW"      
+# # Ingestion Configuration
+# ingestion:
+#   raw_data_path: "data/hies2024/latest/10_RAW"      
 
-# If set to null, the system will look for the 'PASSWORD' environment variable
+# Set the password for zip files in local/parameters.yml if needed. 
+# It will override the base/parameters.yml setting.
 zip_password: null
 
 # Processing Parameters
@@ -83,5 +80,5 @@ features:
 
 # Output Configuration
 output:
-  feature_score: false
+  feature_score: true
   unit_risk_score_path: "results/unit_risk_score.csv"

@@ -14,163 +14,163 @@ from rissk.utils.import_utils import (
     get_dataframes
 )
 
-"""Nodes for ingesting Survey Solutions export data."""
+# """Nodes for ingesting Survey Solutions export data."""
 
-def unzip_raw_surveys(
-    parameters: Dict
-) -> None:
-    """
-    Extract zipped Survey Solutions exports.
+# def unzip_raw_surveys(
+#     parameters: Dict
+# ) -> None:
+#     """
+#     Extract zipped Survey Solutions exports.
     
-    Handles:
-    - Recursive unzipping (nested ZIPs)
-    - Password-protected ZIPs (from credentials)
-    - Mixed formats (.dta, .tab)
+#     Handles:
+#     - Recursive unzipping (nested ZIPs)
+#     - Password-protected ZIPs (from credentials)
+#     - Mixed formats (.dta, .tab)
     
-    Args:
-        parameters: Survey configuration from parameters.yml
+#     Args:
+#         parameters: Survey configuration from parameters.yml
         
-    Side Effect:
-        Extracts files to data/01_raw/{survey_name}/{version}/
-    """
-    from rissk.config import RAW_DATA_DIR
-    from rissk.utils.import_utils import get_zip_files
+#     Side Effect:
+#         Extracts files to data/01_raw/{survey_name}/{version}/
+#     """
+#     from rissk.config import RAW_DATA_DIR
+#     from rissk.utils.import_utils import get_zip_files
     
-    survey_name = parameters["survey"]["name"]
-    questionnaires = parameters["survey"]["questionnaires"]
+#     survey_name = parameters["survey"]["name"]
+#     questionnaires = parameters["survey"]["questionnaires"]
     
-    # Get all ZIP files matching the survey config
-    zip_files = get_zip_files(RAW_DATA_DIR, survey_name, questionnaires)
+#     # Get all ZIP files matching the survey config
+#     zip_files = get_zip_files(RAW_DATA_DIR, survey_name, questionnaires)
     
-    logger.info(f"Found {len(zip_files)} ZIP files to extract")
+#     logger.info(f"Found {len(zip_files)} ZIP files to extract")
     
-    for zip_file in zip_files:
-        dest_path = zip_file.with_suffix('')  # Remove .zip extension
-        logger.info(f"Extracting {zip_file.name} to {dest_path}")
-        extract_zip(zip_file, dest_path)
+#     for zip_file in zip_files:
+#         dest_path = zip_file.with_suffix('')  # Remove .zip extension
+#         logger.info(f"Extracting {zip_file.name} to {dest_path}")
+#         extract_zip(zip_file, dest_path)
     
-    logger.success(f"Extraction complete. Files in {RAW_DATA_DIR}")
+#     logger.success(f"Extraction complete. Files in {RAW_DATA_DIR}")
 
 
-def load_survey_dataframes(
-    parameters: Dict
-) -> tuple:
-    """
-    Load paradata, questionnaire, and microdata from extracted files.
+# def load_survey_dataframes(
+#     parameters: Dict
+# ) -> tuple:
+#     """
+#     Load paradata, questionnaire, and microdata from extracted files.
     
-    Handles:
-    - Mixed file formats (.dta for Stata, .tab for tabular)
-    - Variable name parsing from Survey Solutions structure
-    - Multi-option/GPS/List question transformations
+#     Handles:
+#     - Mixed file formats (.dta for Stata, .tab for tabular)
+#     - Variable name parsing from Survey Solutions structure
+#     - Multi-option/GPS/List question transformations
     
-    Args:
-        parameters: Survey configuration
+#     Args:
+#         parameters: Survey configuration
         
-    Returns:
-        tuple: (paradata_df, questionnaire_df, microdata_df)
-    """
-    from rissk.config import RAW_DATA_DIR
-    from rissk.utils.import_utils import get_survey_info, get_dataframes
+#     Returns:
+#         tuple: (paradata_df, questionnaire_df, microdata_df)
+#     """
+#     from rissk.config import RAW_DATA_DIR
+#     from rissk.utils.import_utils import get_survey_info, get_dataframes
     
-    # Scan extracted directories for survey info
-    survey_paths = []
-    for item in RAW_DATA_DIR.iterdir():
-        if item.is_dir():
-            survey_paths.append(item)
+#     # Scan extracted directories for survey info
+#     survey_paths = []
+#     for item in RAW_DATA_DIR.iterdir():
+#         if item.is_dir():
+#             survey_paths.append(item)
     
-    survey_info = get_survey_info(survey_paths)
+#     survey_info = get_survey_info(survey_paths)
     
-    logger.info(f"Loading dataframes for surveys: {list(survey_info.keys())}")
+#     logger.info(f"Loading dataframes for surveys: {list(survey_info.keys())}")
     
-    # Use your existing get_dataframes logic
-    paradata_df, questionnaire_df, microdata_df = get_dataframes(survey_info)
+#     # Use your existing get_dataframes logic
+#     paradata_df, questionnaire_df, microdata_df = get_dataframes(survey_info)
     
-    logger.info(f"Loaded - Paradata: {paradata_df.shape}, "
-                f"Questionnaire: {questionnaire_df.shape}, "
-                f"Microdata: {microdata_df.shape}")
+#     logger.info(f"Loaded - Paradata: {paradata_df.shape}, "
+#                 f"Questionnaire: {questionnaire_df.shape}, "
+#                 f"Microdata: {microdata_df.shape}")
     
-    return paradata_df, questionnaire_df, microdata_df
+#     return paradata_df, questionnaire_df, microdata_df
 
 
-### 2 Feature Engineering Pipeline
+# ### 2 Feature Engineering Pipeline
 
-"""Nodes for processing paradata and building features."""
-import pandas as pd
-from typing import Dict
-from loguru import logger
+# """Nodes for processing paradata and building features."""
+# import pandas as pd
+# from typing import Dict
+# from loguru import logger
 
 
-def process_paradata_timestamps(
-    paradata_raw: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Process paradata timestamps and add hour features.
+# def process_paradata_timestamps(
+#     paradata_raw: pd.DataFrame
+# ) -> pd.DataFrame:
+#     """
+#     Process paradata timestamps and add hour features.
     
-    This replicates logic from pipelines/feature_engineering/10_process_paradata.py
+#     This replicates logic from pipelines/feature_engineering/10_process_paradata.py
     
-    Args:
-        paradata_raw: Raw paradata DataFrame
+#     Args:
+#         paradata_raw: Raw paradata DataFrame
         
-    Returns:
-        Processed paradata with timestamp features
-    """
-    paradata = paradata_raw.copy()
+#     Returns:
+#         Processed paradata with timestamp features
+#     """
+#     paradata = paradata_raw.copy()
     
-    # Add answer hour feature (from 10_process_paradata.py line 29)
-    paradata['f__answer_hour_set'] = (
-        paradata['timestamp_local'].dt.hour + 
-        paradata['timestamp_local'].dt.round('30min').dt.minute / 60
-    )
+#     # Add answer hour feature (from 10_process_paradata.py line 29)
+#     paradata['f__answer_hour_set'] = (
+#         paradata['timestamp_local'].dt.hour + 
+#         paradata['timestamp_local'].dt.round('30min').dt.minute / 60
+#     )
     
-    # Add interviewing flag
-    paradata['interviewing'] = ~paradata['role'].isin([2, 3, 4])
+#     # Add interviewing flag
+#     paradata['interviewing'] = ~paradata['role'].isin([2, 3, 4])
     
-    logger.info(f"Processed {len(paradata)} paradata records")
+#     logger.info(f"Processed {len(paradata)} paradata records")
     
-    return paradata
+#     return paradata
 
 
-def filter_active_events(
-    paradata_processed: pd.DataFrame,
-    parameters: Dict
-) -> pd.DataFrame:
-    """
-    Filter paradata to active interviewer events.
+# def filter_active_events(
+#     paradata_processed: pd.DataFrame,
+#     parameters: Dict
+# ) -> pd.DataFrame:
+#     """
+#     Filter paradata to active interviewer events.
     
-    Replicates logic from pipelines/feature_engineering/11_process_paradata_active.py
+#     Replicates logic from pipelines/feature_engineering/11_process_paradata_active.py
     
-    Args:
-        paradata_processed: Processed paradata
-        parameters: Config parameters (for limit_unit)
+#     Args:
+#         paradata_processed: Processed paradata
+#         parameters: Config parameters (for limit_unit)
         
-    Returns:
-        DataFrame with only active interviewer events
-    """
-    active_events = [
-        'InterviewCreated', 'AnswerSet', 'Resumed', 
-        'AnswerRemoved', 'CommentSet', 'Restarted'
-    ]
+#     Returns:
+#         DataFrame with only active interviewer events
+#     """
+#     active_events = [
+#         'InterviewCreated', 'AnswerSet', 'Resumed', 
+#         'AnswerRemoved', 'CommentSet', 'Restarted'
+#     ]
     
-    # Filter logic from 11_process_paradata_active.py line 28
-    active_mask = (
-        paradata_processed['event'].isin(active_events) &
-        paradata_processed['question_scope'].isin([0, '']) &
-        (paradata_processed['role'] == 1)
-    )
+#     # Filter logic from 11_process_paradata_active.py line 28
+#     active_mask = (
+#         paradata_processed['event'].isin(active_events) &
+#         paradata_processed['question_scope'].isin([0, '']) &
+#         (paradata_processed['role'] == 1)
+#     )
     
-    vars_needed = [
-        'interview__id', 'order', 'event', 'responsible', 'role', 'tz_offset',
-        'param', 'answer', 'roster_level', 'timestamp_local', 'variable_name',
-        'question_sequence', 'question_scope', "qtype", 'question_type',
-        'qnr', 'qnr_version', 'interviewing', 'yes_no_view', 'index_col', 
-        'f__answer_hour_set'
-    ]
+#     vars_needed = [
+#         'interview__id', 'order', 'event', 'responsible', 'role', 'tz_offset',
+#         'param', 'answer', 'roster_level', 'timestamp_local', 'variable_name',
+#         'question_sequence', 'question_scope', "qtype", 'question_type',
+#         'qnr', 'qnr_version', 'interviewing', 'yes_no_view', 'index_col', 
+#         'f__answer_hour_set'
+#     ]
     
-    df_para_active = paradata_processed.loc[active_mask, vars_needed]
+#     df_para_active = paradata_processed.loc[active_mask, vars_needed]
     
-    logger.info(f"Filtered to {len(df_para_active)} active events")
+#     logger.info(f"Filtered to {len(df_para_active)} active events")
     
-    return df_para_active
+#     return df_para_active
 
 
 def build_item_features(

@@ -27,16 +27,16 @@ def create_pipeline(**kwargs) -> Pipeline:
             outputs="paradata_active",
             name="filter_active_paradata_node",
         ),
-        node(
-            func=build_item_features,
-            inputs=["raw_microdata", "paradata_active", "raw_questionnaire", "parameters"],
-            outputs="item_features",
-            name="build_item_features_node",
-        ),
-        node(
-            func=build_unit_features,
-            inputs=["paradata_active", "parameters"],
-            outputs="unit_features",
-            name="build_unit_features_node",
-        ),
+        # node(
+        #     func=build_item_features,
+        #     inputs=["raw_microdata", "paradata_active", "raw_questionnaire", "parameters"],
+        #     outputs="item_features",
+        #     name="build_item_features_node",
+        # ),
+        # node(
+        #     func=build_unit_features,
+        #     inputs=["paradata_active", "parameters"],
+        #     outputs="unit_features",
+        #     name="build_unit_features_node",
+        # ),
     ])

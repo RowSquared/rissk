@@ -302,6 +302,40 @@ def get_paradata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFra
             else:
                  df_para['roster_level'] = None # Or empty string
 
+        if 'timestamp_utc' in df_para.columns and 'tz_offset' in df_para.columns:
+            df_para['timestamp_utc'] = pd.to_datetime(df_para['timestamp_utc'])
+            # Only apply if tz_offset is string
+            if pd.api.types.is_string_dtype(df_para['tz_offset']):
+                 df_para['tz_offset'] = pd.to_timedelta(df_para['tz_offset'].str.replace(':', ' hours ') + ' minutes')
+            df_para['timestamp_local'] = df_para['timestamp_utc'] + df_para['tz_offset']
+
+        try:
+            parts = parse_filename(data_path.name)
+            qnr_name = parts[0]
+            qnr_version = parts[1]
+            df_para = set_qnr_version(df_para, qnr_name, qnr_version)
+        except ValueError:
+            logger.warning(f"Could not parse filename '{data_path.name}' for version info")
+
+        if not df_questionnaires.empty:
+            q_columns = ['qnr_seq', 'variable_name', "qtype", 'question_type',
+                         'answers', 'question_scope',
+                         'yes_no_view', 'is_filtered_combobox',
+                         'is_integer', 'cascade_from_question_id',
+                         'answer_sequence', 'n_answers', 'question_sequence',
+                         'qnr', 'qnr_version']
+            
+            # Ensure columns exist in questionnaire df before selecting
+            q_columns = [c for c in q_columns if c in df_questionnaires.columns]
+
+            # Merge
+            df_para = df_para.merge(df_questionnaires[q_columns], how='left',
+                                    left_on=['param', 'qnr', 'qnr_version'],
+                                    right_on=['variable_name', 'qnr', 'qnr_version'])
+
+        # Normalize column names
+        df_para.columns = [normalize_column_name(c) for c in df_para.columns]
+
     return df_para
 
 
@@ -365,28 +399,35 @@ def read_microdata_file(data_path: Path, file_name: str) -> pd.DataFrame:
 
 
 def get_microdata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFrame:
-    drop_list = {'interview__key', 'sssys_irnd', 'has__errors', 'interview__status', 'assignment__id'}
+    drop_list = ['interview__key', 'sssys_irnd', 'has__errors', 'interview__status', 'assignment__id']
 
     file_names = get_microdata_file_list(data_path)
     
-    # Pre-calculate masks outside loop
-    multi_unlinked_vars = []
-    multi_linked_vars = []
-    list_vars = []
-    gps_vars = []
+    # # Pre-calculate masks outside loop
+    # # Pre-initialize these variable lists once so they exist when the questionnaire DF is empty
+    # # (avoids NameError and avoids recalculating per-file).
+    # multi_unlinked_vars = []
+    # multi_linked_vars = []
+    # list_vars = []
+    # gps_vars = []
 
+    # define multi/list question conditions
     if not df_questionnaires.empty:
         # Use boolean indexing
-        unlinked_mask = (df_questionnaires["qtype"] == 'MultyOptionsQuestion') & (df_questionnaires['is_linked'] == False)
-        linked_mask = (df_questionnaires["qtype"] == 'MultyOptionsQuestion') & (df_questionnaires['is_linked'] == True)
+        unlinked_mask = (df_questionnaires["qtype"] == 'MultyOptionsQuestion') & (
+            df_questionnaires['is_linked'] == False)
+        linked_mask = (df_questionnaires["qtype"] == 'MultyOptionsQuestion') & (
+            df_questionnaires['is_linked'] == True)
         list_mask = (df_questionnaires["qtype"] == 'TextListQuestion')
         gps_mask = (df_questionnaires["qtype"] == 'GpsCoordinateQuestion')
-
+        
+        # extract multi/list question lists from conditions
         multi_unlinked_vars = df_questionnaires.loc[unlinked_mask, 'variable_name'].tolist()
         multi_linked_vars = df_questionnaires.loc[linked_mask, 'variable_name'].tolist()
         list_vars = df_questionnaires.loc[list_mask, 'variable_name'].tolist()
         gps_vars = df_questionnaires.loc[gps_mask, 'variable_name'].tolist()
-
+    
+    # Iterate over each file
     all_dfs = []
     for file_name in file_names:
         df = read_microdata_file(data_path, file_name)
@@ -404,11 +445,10 @@ def get_microdata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFr
             df = transform_multi(df, list_vars, 'list')
             df = transform_multi(df, gps_vars, 'gps')
 
-        # Handle roster IDs
+        # create roster_level from __id columns if on roster level, else '' if main questionnaire file
         roster_ids = [col for col in df.columns if col.endswith("__id") and col != "interview__id"]
         if roster_ids:
-            # Vectorized string join is harder in pandas, apply is okay here
-            df['roster_level'] = df[roster_ids].astype(str).agg(','.join, axis=1)
+            df['roster_level'] = df[roster_ids].apply(lambda row: ",".join(map(str, row)), axis=1)
             df.drop(columns=roster_ids, inplace=True)
         else:
             df['roster_level'] = ''
