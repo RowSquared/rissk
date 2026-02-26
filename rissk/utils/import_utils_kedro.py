@@ -177,28 +177,16 @@ def get_survey_info(survey_files: list[Path]) -> dict[str, dict[str, dict[str, P
     return survey_info
 
 
-def read_json_questionnaire(survey_path: Path, questionnaire_path: Optional[Path] = None) -> dict:
+def read_json_questionnaire(survey_path: Path) -> dict:
     """Reads the questionnaire JSON definition."""
-    if questionnaire_path is None:
-        file_path = survey_path / 'Questionnaire' / 'content' / 'document.json'
-    else:
-        # If explicit questionnaire_path is given (rare case in current pipeline usage)
-        # We need check if it points to a specific file or directory
-        # This part assumes structure compatible with get_questionnaire_map from legacy code
-        # simplified here for clarity/robustness:
-        if questionnaire_path.is_file():
-             file_path = questionnaire_path
-        else:
-            # Fallback logic mirroring legacy get_questionnaire_id/map behavior if needed
-             # For now, simplistic implementation assuming standard export structure
-             file_path = survey_path / 'Questionnaire' / 'content' / 'document.json'
-
-    if not file_path.exists():
-        logger.warning(f"Questionnaire document not found at {file_path}")
+    # Try to open the JSON file
+    file_path = survey_path / 'Questionnaire' / 'content' / 'document.json'
+    try:
+        with file_path.open('r', encoding='utf-8') as f:
+            return json.load(f)
+    except (Exception) as e:
+        logger.warning(f"Questionnaire document not found or invalid at {file_path}: {e}")
         return None
-
-    with file_path.open('r', encoding='utf-8') as f:
-        return json.load(f)
 
 
 def get_questionnaire(data_path: Path, questionnaire_path: Optional[Path] = None) -> pd.DataFrame:
@@ -206,7 +194,7 @@ def get_questionnaire(data_path: Path, questionnaire_path: Optional[Path] = None
     Loads and processes a questionnaire from a JSON file located at the specified path.
     Also handles categorization of data.
     """
-    q_data = read_json_questionnaire(data_path, questionnaire_path=questionnaire_path)
+    q_data = read_json_questionnaire(data_path)
 
     qnr_df = pd.DataFrame()
 
