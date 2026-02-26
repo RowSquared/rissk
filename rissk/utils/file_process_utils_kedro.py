@@ -4,6 +4,7 @@ import pandas as pd
 from typing import Dict
 import re
 import numpy as np
+import unicodedata
 
 
 
@@ -217,7 +218,7 @@ def get_categories(directory: Path) -> Dict[str, Dict[str, list]]:
         df = pd.read_excel(file)
         n_answers = df.shape[0]
         answer_sequence = df['id'].tolist()
-        categories[file.name] = {'n_answers': n_answers, 'answer_sequence': answer_sequence}
+        categories[file.stem] = {'n_answers': n_answers, 'answer_sequence': answer_sequence}
     
     return categories
 
@@ -227,16 +228,36 @@ def update_df_categories(row, categories):
     This function updates a DataFrame row with category information if applicable.
 
     Parameters:
-    row (Series): The Questioner DataFrame row to be updated.
+    row (Series): The Questionnaire DataFrame row to be updated.
     categories (dict): A dictionary containing category data, keys are 'CategoriesId'.
 
     Returns:
     Series: The updated DataFrame row.
 
     """
-    if row['CategoriesId'] in categories:
-        row['n_answers'] = categories[row['CategoriesId']]['n_answers']
-        row['answer_sequence'] = categories[row['CategoriesId']]['answer_sequence']
+    cid = row.get('CategoriesId')
+    if pd.isna(cid) or cid in (None, ''):
+        return row
+
+    # Normalize ID: strip all unicode dash characters
+    cid_str = str(cid)
+    cid_clean = ''.join(c for c in cid_str if unicodedata.category(c) != 'Pd')
+
+    # Try direct match with cleaned ID (assuming keys might be cleaned/filenames)
+    match = categories.get(cid_clean)
+
+    if match is None:
+        # Fallback: Compare against cleaned keys from the dictionary
+        # This handles cases where filenames might still have dashes or other formatting
+        for key, val in categories.items():
+            key_clean = ''.join(c for c in key if unicodedata.category(c) != 'Pd')
+            if key_clean == cid_clean:
+                match = val
+                break
+
+    if match:
+        row['n_answers'] = match['n_answers']
+        row['answer_sequence'] = match['answer_sequence']
     return row
 
 def parse_filename(filename: str):
