@@ -93,41 +93,37 @@ def transform_multi(df, variable_list, transformation_type):
 
             def remove_unset_value(sub_list):
                 # Normalize numeric types (float -> int if integer) inside the list construction
-                # This ensures lists like [1.0, 2.0] become [1, 2], and np.float64(nan) -> np.nan (float)
+                # This ensures lists like [1.0, 2.0] become [1, 2], and np.float64(nan) -> float('nan')
                 def normalize(v):
-                    if isinstance(v, float) and v.is_integer():
-                        return int(v)
-                    # Convert np.float64 or other numpy scalars to native python types, especially NaN
                     if isinstance(v, (np.floating, np.integer)):
                         if np.isnan(v):
                             return float('nan')
                         return v.item()
+                    if isinstance(v, float) and v.is_integer():
+                        return int(v)
                     return v
 
-                sub = list(filter(lambda v: v not in [-999999999, '##N/A##'], sub_list))
+                # Filter explicit Survey Solutions structural missing values
+                # We do not filter 'true' NaNs yet, as they represent system-missing/skipped
+                sub = [x for x in sub_list if x not in [-999999999, '##N/A##']]
                 sub = [normalize(ele) for ele in sub]
                 
                 # Check for empty list safely, avoiding numpy array ambiguity
-                sub = [ele if (not isinstance(ele, list) or len(ele) > 0) else '##N/A##' for ele in sub]
+                # Do NOT filter out NaNs (system missing/skipped) as per requirements to distinguish them from explicit missing
+                clean_sub = []
+                for ele in sub:
+                    if isinstance(ele, list):
+                        if len(ele) > 0:
+                            clean_sub.append(ele)
+                    else:
+                        clean_sub.append(ele)
                 
-                # Check if sub is not empty list AND contains only '##N/A##'
-                # list(set(sub)) might fail if elements are unhashable (like lists), which sub might contain? 
-                # If sub contains lists, set(sub) will fail.
-                # Assuming elements are hashable for now as they come from microdata values (scalars usually).
-                # But if we have nested lists? transform_multi is for multi-select questions. 
-                # The values are usually roster indices (ints) or values (scalars).
-                
-                is_only_na = False
-                if len(sub) > 0:
-                    try:
-                       if list(set(sub)) == ['##N/A##']:
-                           is_only_na = True
-                    except TypeError:
-                       # Fallback if unhashable elements (unlikely for scalars, but possible if details got messed up)
-                       is_only_na = all(s == '##N/A##' for s in sub)
+                # If the cleaning results in an empty list, it implies all values were
+                # missing, skipped, or invalid. We return '##N/A##' to match legacy behavior.
+                if len(clean_sub) == 0:
+                    return '##N/A##'
 
-                sub = sub if (len(sub) > 0 and not is_only_na) else '##N/A##'
-                return sub
+                return clean_sub
 
             transformation = [remove_unset_value(x)
                               if x else float('nan') for x in transformation] if transformation_type != 'gps' else [

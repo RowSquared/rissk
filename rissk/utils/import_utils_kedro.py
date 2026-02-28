@@ -356,10 +356,10 @@ def read_microdata_file(data_path: Path, file_name: str) -> pd.DataFrame:
             
             # Handle StataMissingValue objects which are unhashable
             # Replace '.a' with -999999999 and '.' with NaN
-            from pandas.io.stata import StataMissingValue
 
             def replace_stata_missing(val):
-                if isinstance(val, StataMissingValue):
+                # Duck typing check for StataMissingValue to avoid direct import dependency
+                if type(val).__name__ == 'StataMissingValue':
                     s_val = str(val)
                     if s_val == '.a':
                         return -999999999

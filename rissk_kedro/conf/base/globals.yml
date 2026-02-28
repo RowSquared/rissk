@@ -6,7 +6,7 @@ survey:
     - name: "snb_hies_hh"
       VERSION: [9, 10, 11]
     - name: "slbhies_listing"
-      VERSION: [6, 7]
+      VERSION: [5, 6, 7]
 
 # survey:
 #   name: "pmpmd"
