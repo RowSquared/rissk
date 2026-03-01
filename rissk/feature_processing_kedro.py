@@ -23,6 +23,15 @@ def _make_index_col(df: pd.DataFrame) -> pd.DataFrame:
     df['index_col'] = df['index_col'].str.strip('_')
     return df
 
+def _get_numeric_mask(df_item: pd.DataFrame) -> pd.Series:
+    """Returns a boolean mask for valid numeric question rows, matching the legacy numeric_question_mask."""
+    return (
+        (df_item["qtype"] == 'NumericQuestion') &
+        (df_item['value'] != '') &
+        (~pd.isnull(df_item['value'])) &
+        (df_item['value'] != -999999999)
+    )
+
 def _get_df_time(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
     """Calculates time differences and durations from paradata."""
     df_time = df_active_paradata.copy()
@@ -54,15 +63,8 @@ def _get_df_time(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
     condition = (df_time['event'].isin(active_events)) & (df_time['time_difference'] < 30 * 60)
     df_time['f__total_duration'] = df_time.loc[condition, 'time_difference']
 
-    # Starting timestamp per interview
-    # Use transform to broadcast min timestamp to all rows of the group
-    starting_timestamp = df_time[df_time['event'] == 'AnswerSet'].groupby('interview__id')['timestamp_local'].transform('min')
-    
-    # We need to map this back to the main df_time
-    # Since transform returns a series aligned with the filtered df, we need a safer merge/map strategy
-    # Or just calculate on the full group if efficient.
-    # The original code used map on a groupby result.
-    
+    # Starting timestamp per interview: min timestamp of the first AnswerSet event per interview.
+    # Using map on a pre-computed groupby result (matching the legacy approach).
     start_time_map = df_time[df_time['event'] == 'AnswerSet'].groupby('interview__id')['timestamp_local'].min()
     df_time['f__starting_timestamp'] = df_time['interview__id'].map(start_time_map)
     
@@ -309,53 +311,42 @@ def _feat_string_length(df_item, **kwargs):
     feature_name = 'f__string_length'
     mask = df_item["qtype"] == 'TextQuestion'
     df_item[feature_name] = pd.NA
-    # Use str.len()
     if mask.any():
-        df_item.loc[mask, feature_name] = df_item.loc[mask, 'value'].astype(str).str.len()
+        # Use .str.len() directly to preserve NA (astype(str) would convert NaN -> "nan", length 3)
+        df_item.loc[mask, feature_name] = df_item.loc[mask, 'value'].str.len().astype('Int64')
     return df_item
 
 def _feat_numeric_response(df_item, **kwargs):
     feature_name = 'f__numeric_response'
-    numeric_mask = (df_item["qtype"] == 'NumericQuestion') & pd.to_numeric(df_item['value'], errors='coerce').notna()
+    numeric_mask = _get_numeric_mask(df_item)
     df_item[feature_name] = np.nan
     if numeric_mask.any():
-        df_item.loc[numeric_mask, feature_name] = df_item.loc[numeric_mask, 'value'].astype(float)
+        df_item.loc[numeric_mask, feature_name] = pd.to_numeric(df_item.loc[numeric_mask, 'value'], errors='coerce')
     return df_item
 
 def _feat_first_digit(df_item, **kwargs):
     feature_name = 'f__first_digit'
-    # Logic: abs(value), str[0]
-    numeric_mask = (df_item["qtype"] == 'NumericQuestion') & pd.to_numeric(df_item['value'], errors='coerce').notna()
+    numeric_mask = _get_numeric_mask(df_item)
     df_item[feature_name] = pd.NA
     if numeric_mask.any():
-        # Convert to float, absolute, string, take first char
+        # Take absolute value, convert to string, extract first character
         vals = pd.to_numeric(df_item.loc[numeric_mask, 'value']).abs().astype(str).str[0]
-        # Check if digit
-        # vals = vals[vals.str.isdigit()] # Should be digit if from float
-        df_item.loc[numeric_mask, feature_name] = pd.to_numeric(vals, errors='coerce')
+        df_item.loc[numeric_mask, feature_name] = pd.to_numeric(vals, errors='coerce').astype('Int64')
     return df_item
 
 def _feat_last_digit(df_item, **kwargs):
     feature_name = 'f__last_digit'
-    numeric_mask = (df_item["qtype"] == 'NumericQuestion') & pd.to_numeric(df_item['value'], errors='coerce').notna()
+    # Use the same mask as legacy: excludes empty, null, and -999999999
+    numeric_mask = _get_numeric_mask(df_item)
     df_item[feature_name] = pd.NA
-    
+
     if numeric_mask.any():
-        # Only for integer-like values >= 1? Legacy used >= 1 check on value
-        vals = pd.to_numeric(df_item.loc[numeric_mask, 'value'])
-        
-        # Check conditions
-        # We can implement this vectorally
-        valid_vals = (vals.abs() >= 1)
-        
-        # Modulo 10
-        # Be careful with floats. 12.0 % 10 = 2.0.
-        res = vals % 10
-        
-        # Apply mask
-        res = res.where(valid_vals, pd.NA)
-        df_item.loc[numeric_mask, feature_name] = res
-        
+        # Cast to Int64 (nullable) matching legacy astype('int64'), then apply x >= 1 check
+        # Note: legacy checks x >= 1 (not abs(x) >= 1), so negative values correctly yield NA
+        vals = pd.to_numeric(df_item.loc[numeric_mask, 'value']).astype('Int64')
+        # .where(condition) keeps values where True, sets False to NA
+        df_item.loc[numeric_mask, feature_name] = (vals % 10).where(vals >= 1)
+
     return df_item
 
 def _feat_first_decimal(df_item, **kwargs):
@@ -373,7 +364,7 @@ def _feat_first_decimal(df_item, **kwargs):
         # Documentation says "first decimal digit". Code says *100 % 100.
         # I will strictly follow legacy code logic.
         res = np.floor(values * 100) % 100
-        df_item.loc[mask, feature_name] = res
+        df_item.loc[mask, feature_name] = res.astype('Int64')
         
     return df_item
 
@@ -411,53 +402,76 @@ def _feat_answer_position(df_item, **kwargs):
     return df_item
 
 def _feat_answer_changed(df_item, **kwargs):
+    """
+    ⚠️ Legacy bug fixed: the legacy code applied the yes_list change
+    check and immediately overwrote it with the no_list check (two separate .loc assignments
+    on the same mask), so yes_list changes were always ignored. This implementation
+    combines both checks using a bitwise OR.
+    """
     feature_name = 'f__answer_changed'
     paradata_active = kwargs.get('paradata_active')
-    
+
     if paradata_active is None:
         return df_item
-    
-    # Logic involves reconstructing history of AnswerSet
+
+    item_level_columns = ['interview__id', 'variable_name', 'roster_level']
     df_changed = paradata_active[paradata_active['event'] == 'AnswerSet'].copy()
-    
+
     if 'index_col' not in df_changed.columns:
         df_changed = _make_index_col(df_changed)
-        
+
     df_changed[feature_name] = False
-    
-    # We need qtype. Merge it? Or is it in paradata? 'qtype' is in paradata.
-    
-    # Logic for lists (split by |)
+    group_cols = [c for c in item_level_columns + ['index_col'] if c in df_changed.columns]
+    has_yes_no = 'yes_no_view' in df_changed.columns
+
+    # --- Case 1: TextListQuestion and MultyOptionsQuestion (without yes_no_view mode) ---
     list_mask = (df_changed["qtype"] == 'TextListQuestion')
-    multi_mask = (df_changed['yes_no_view'] == False) if 'yes_no_view' in df_changed.columns else pd.Series(False, index=df_changed.index)
-    
-    # This logic is quite complex to port perfectly without testing.
-    # Simplified approach: Group by index_col, count AnswerSet events?
-    # No, legacy checks if answer *content* changed relative to previous.
-    
-    # For refactor safety, I will implement a simplified count-based approach if logic is too brittle, 
-    # OR try to replicate exact logic if possible.
-    
-    # Let's try replicating the "Single Answer" logic which is most common
-    df_changed['prev_answer'] = df_changed.groupby('interview__id')['answer'].shift()
-    # But wait, groupby interview_id mixes questions. Logic needs to account for question sequence.
-    # Legacy: df.groupby(item_level_cols + index_col)['answer'].shift()
-    # If grouped by index_col, we trace history of THAT question.
-    
-    df_changed['prev_answer'] = df_changed.groupby('index_col')['answer'].shift()
-    
-    # Detect change
-    # Note: first answer is not a change.
-    change_mask = (df_changed['prev_answer'].notna()) & (df_changed['answer'] != df_changed['prev_answer'])
-    df_changed.loc[change_mask, feature_name] = True
-    
-    # Set to features
-    # Sum of changes per item
+    multi_mask = (df_changed['yes_no_view'] == False) if has_yes_no else pd.Series(False, index=df_changed.index)
+
+    df_changed['answer_list'] = pd.NA
+    df_changed.loc[list_mask, 'answer_list'] = df_changed.loc[list_mask, 'answer'].str.split('|')
+    df_changed.loc[multi_mask, 'answer_list'] = df_changed.loc[multi_mask, 'answer'].str.split(r', |\|')
+
+    df_changed['prev_answer_list'] = df_changed.groupby(group_cols)['answer_list'].shift()
+    answers_mask = df_changed['prev_answer_list'].notna()
+    if answers_mask.any():
+        df_changed.loc[answers_mask, feature_name] = df_changed.loc[answers_mask].apply(
+            lambda row: not set(row['prev_answer_list']).issubset(set(row['answer_list'])), axis=1
+        )
+
+    # --- Case 2: Single-answer questions ---
+    df_changed['prev_answer'] = df_changed.groupby(group_cols)['answer'].shift()
+    single_answer_mask = (
+        (~df_changed["qtype"].isin(['MultyOptionsQuestion', 'TextListQuestion'])) &
+        (df_changed['prev_answer'].notna()) &
+        (df_changed['answer'] != df_changed['prev_answer'])
+    )
+    df_changed.loc[single_answer_mask, feature_name] = True
+
+    # --- Case 3: Yes/No view questions ---
+    if has_yes_no:
+        yesno_mask = (df_changed['yes_no_view'] == True)
+        if yesno_mask.any():
+            df_filtered = df_changed[yesno_mask].copy()
+            df_filtered[['yes_list', 'no_list']] = df_filtered['answer'].str.split('|', expand=True)
+            df_filtered['yes_list'] = df_filtered['yes_list'].str.split(', ').apply(
+                lambda x: [] if x == [''] or x is None else x)
+            df_filtered['no_list'] = df_filtered['no_list'].str.split(', ').apply(
+                lambda x: [] if x == [''] or x is None else x)
+            yesno_group_cols = [c for c in group_cols if c in df_filtered.columns]
+            df_filtered['prev_yes_list'] = df_filtered.groupby(yesno_group_cols)['yes_list'].shift(fill_value=[])
+            df_filtered['prev_no_list'] = df_filtered.groupby(yesno_group_cols)['no_list'].shift(fill_value=[])
+            # A change occurs if either yes or no selections changed
+            yes_changed = df_filtered.apply(
+                lambda row: not set(row['prev_yes_list']).issubset(set(row['yes_list'])), axis=1)
+            no_changed = df_filtered.apply(
+                lambda row: not set(row['prev_no_list']).issubset(set(row['no_list'])), axis=1)
+            df_changed.loc[yesno_mask, feature_name] = (yes_changed | no_changed).values
+
+    # Sum changes per item and map back
     changes_per_item = df_changed.groupby('index_col')[feature_name].sum()
-    
-    # Map back
     df_item[feature_name] = df_item['index_col'].map(changes_per_item).fillna(0)
-    
+
     return df_item
 
 def _feat_answer_selected(df_item, **kwargs):
@@ -483,17 +497,104 @@ def _feat_answer_selected(df_item, **kwargs):
     return df_item
 
 def _feat_gps(df_item, **kwargs):
-    # Sets f__gps_latitude etc.
+    # Sets f__gps boolean flag plus f__gps_latitude, f__gps_longitude, f__gps_accuracy
+    feature_name = 'f__gps'
     mask = df_item["qtype"] == 'GpsCoordinateQuestion'
+    df_item[feature_name] = False
     if mask.any():
-        # Split value "lat,lon,acc,alt,time"
+        df_item.loc[mask, feature_name] = True
+        # Split value "lat,lon,acc,alt,timestamp_utc"
         gps_data = df_item.loc[mask, 'value'].str.split(',', expand=True)
-        # Expecting at least 3 cols
         if gps_data.shape[1] >= 3:
-             df_item.loc[mask, 'f__gps_latitude'] = pd.to_numeric(gps_data[0], errors='coerce')
-             df_item.loc[mask, 'f__gps_longitude'] = pd.to_numeric(gps_data[1], errors='coerce')
-             df_item.loc[mask, 'f__gps_accuracy'] = pd.to_numeric(gps_data[2], errors='coerce')
-        
+            df_item.loc[mask, 'f__gps_latitude'] = pd.to_numeric(gps_data[0], errors='coerce')
+            df_item.loc[mask, 'f__gps_longitude'] = pd.to_numeric(gps_data[1], errors='coerce')
+            df_item.loc[mask, 'f__gps_accuracy'] = pd.to_numeric(gps_data[2], errors='coerce')
+    return df_item
+
+
+def _feat_comment_length(df_item, **kwargs):
+    """Total character length of all comments left on each item.
+    Matches legacy make_feature_item__comment_length which uses self.df_paradata
+    (all events, role=1, interviewing=True — not limited to active events).
+    """
+    feature_name = 'f__comment_length'
+    paradata_full = kwargs.get('paradata_full')
+    if paradata_full is None:
+        return df_item
+
+    comment_mask = (
+        (paradata_full['event'] == 'CommentSet') &
+        (paradata_full['role'] == 1)
+    )
+    df_comment = paradata_full[comment_mask].copy()
+    if df_comment.empty:
+        return df_item
+
+    if 'index_col' not in df_comment.columns:
+        df_comment = _make_index_col(df_comment)
+
+    df_comment[feature_name] = df_comment['answer'].str.len()
+    df_agg = df_comment.groupby('index_col').agg(f__comment_length=(feature_name, 'sum'))
+    df_item[feature_name] = df_item['index_col'].map(df_agg['f__comment_length'])
+    return df_item
+
+
+def _feat_comment_set(df_item, **kwargs):
+    """Count of CommentSet events per item.
+    Matches legacy make_feature_item__comment_set which uses self.df_paradata
+    (all events, role=1, interviewing=True — not limited to active events).
+    """
+    feature_name = 'f__comment_set'
+    paradata_full = kwargs.get('paradata_full')
+    if paradata_full is None:
+        return df_item
+
+    comment_mask = (
+        (paradata_full['event'] == 'CommentSet') &
+        (paradata_full['role'] == 1)
+    )
+    df_comment = paradata_full[comment_mask].copy()
+    if df_comment.empty:
+        return df_item
+
+    if 'index_col' not in df_comment.columns:
+        df_comment = _make_index_col(df_comment)
+
+    df_agg = df_comment.groupby('index_col').agg(f__comment_set=('order', 'count'))
+    df_item[feature_name] = df_item['index_col'].map(df_agg['f__comment_set'])
+    return df_item
+
+
+def _feat_answer_removed(df_item, **kwargs):
+    """Count of AnswerRemoved events per item.
+    Matches legacy get_feature_item__answer_removed which uses self.df_paradata
+    (all events, role=1, interviewing=True — not limited to active events).
+    The legacy method notes this feature may include items no longer in microdata.
+    """
+    feature_name = 'f__answer_removed'
+    paradata_full = kwargs.get('paradata_full')
+    if paradata_full is None:
+        return df_item
+
+    removed_mask = (
+        (paradata_full['event'] == 'AnswerRemoved') &
+        (paradata_full['role'] == 1)
+    )
+    df_removed = paradata_full[removed_mask]
+    if df_removed.empty:
+        return df_item
+
+    # Legacy groups on interview__id + responsible + variable_name + qnr_seq;
+    # we merge on interview__id + variable_name which is safe since qnr_seq is 1:1 with variable_name.
+    df_agg = df_removed.groupby(
+        ['interview__id', 'variable_name']
+    ).agg(f__answer_removed=('order', 'count')).reset_index()
+
+    df_item = df_item.merge(
+        df_agg[['interview__id', 'variable_name', feature_name]],
+        how='left',
+        on=['interview__id', 'variable_name']
+    )
     return df_item
 
 
@@ -507,35 +608,38 @@ ITEM_FEATURE_MAP = {
     'answer_position': _feat_answer_position,
     'answer_changed': _feat_answer_changed,
     'answer_selected': _feat_answer_selected,
+    'answer_removed': _feat_answer_removed,
+    'comment_length': _feat_comment_length,
+    'comment_set': _feat_comment_set,
     'gps': _feat_gps,
-    # 'comment_length': Use pre-calculated f__comment_duration from base table? No, that's duration.
-    # comment_length is length of txt.
-    # 'comment_set': Count of comments.
 }
 
 
-def enrich_item_features(df_item: pd.DataFrame, paradata_active: pd.DataFrame, parameters: dict) -> pd.DataFrame:
+def enrich_item_features(df_item: pd.DataFrame, paradata_active: pd.DataFrame, paradata_full: pd.DataFrame, parameters: dict) -> pd.DataFrame:
     """
     Applies feature engineering logic to the item table.
+    paradata_active: active interviewer events (self.df_active_paradata equivalent).
+    paradata_full: all processed events, role=1, interviewing=True (self.df_paradata equivalent).
     """
     logger.info("Enriching item features...")
     allowed_features = parameters.get('features', {})
-    
-    # Helper: Ensure index_col in paradata for lookups
+
+    # Ensure index_col in paradata for lookups
     if 'index_col' not in paradata_active.columns:
-         paradata_active = _make_index_col(paradata_active.copy())
+        paradata_active = _make_index_col(paradata_active.copy())
+    if 'index_col' not in paradata_full.columns:
+        paradata_full = _make_index_col(paradata_full.copy())
 
     for feat_key, feat_cfg in allowed_features.items():
         if feat_cfg.get('use', False):
-            # Map 'string_length' -> _feat_string_length
             func = ITEM_FEATURE_MAP.get(feat_key)
             if func:
                 logger.info(f"Calculating item feature: {feat_key}")
                 try:
-                    df_item = func(df_item, paradata_active=paradata_active)
+                    df_item = func(df_item, paradata_active=paradata_active, paradata_full=paradata_full)
                 except Exception as e:
                     logger.warning(f"Failed to calculate {feat_key}: {e}")
-    
+
     return df_item
 
 
@@ -543,48 +647,97 @@ def enrich_item_features(df_item: pd.DataFrame, paradata_active: pd.DataFrame, p
 
 def _feat_unit_number_answered(df_unit, item_features, **kwargs):
     feature_name = 'f__number_answered'
-    # Count valid answers in item table
-    # Valid = not null, not missing codes
-    mask = (item_features['value'].notna()) & (item_features['value'] != '')
-    
-    counts = item_features[mask].groupby('interview__id').size()
-    df_unit[feature_name] = df_unit['interview__id'].map(counts).fillna(0)
+    # Match legacy make_feature_unit__number_answered: exclude null, -999999999, '##N/A##',
+    # empty string, and Variable-type questions
+    mask = (
+        (~pd.isnull(item_features['value'])) &
+        (item_features['value'] != -999999999) &
+        (item_features['value'] != '##N/A##') &
+        (item_features['value'] != '') &
+        (item_features['qtype'] != 'Variable')
+    )
+    df_agg = item_features[mask].groupby('interview__id').agg(
+        f__number_answered=('value', 'count')
+    )
+    df_unit[feature_name] = df_unit['interview__id'].map(df_agg['f__number_answered']).fillna(0)
     return df_unit
 
 def _feat_unit_number_unanswered(df_unit, item_features, **kwargs):
     feature_name = 'f__number_unanswered'
-    # Check for missing codes like -999... or ##N/A##
-    # Simplified check
-    mask = (item_features['value'].astype(str).str.contains('##N/A##')) | (item_features['value'] == -999999999)
-    
-    counts = item_features[mask].groupby('interview__id').size()
-    df_unit[feature_name] = df_unit['interview__id'].map(counts).fillna(0)
+    # Match legacy make_feature_unit__number_unanswered: -999999999 or '##N/A##', excluding Variable type
+    mask = (
+        (
+            (item_features['value'] == -999999999) |
+            (item_features['value'] == '##N/A##')
+        ) &
+        (item_features['qtype'] != 'Variable')
+    )
+    df_agg = item_features[mask].groupby('interview__id').agg(
+        f__number_unanswered=('value', 'count')
+    )
+    df_unit[feature_name] = df_unit['interview__id'].map(df_agg['f__number_unanswered']).fillna(0)
     return df_unit
+
+def _feat_unit_translation_positions(df_unit, item_features, **kwargs):
+    """Relative positions of TranslationSwitched events within each interview.
+    Matches legacy make_feature_unit__translation_positions which uses self.df_paradata.
+
+    Returns a list of relative positions (0..1) per interview.
+    """
+    feature_name = 'f__translation_positions'
+    paradata_full = kwargs.get('paradata_full')
+    if paradata_full is None:
+        return df_unit
+
+    trans_mask = paradata_full['event'].isin(['AnswerSet', 'TranslationSwitched'])
+    df_trans = paradata_full.loc[trans_mask, ['interview__id', 'order', 'event', 'param']].copy()
+    if df_trans.empty:
+        return df_unit
+
+    df_trans = df_trans.sort_values(['interview__id', 'order']).reset_index(drop=True)
+    df_trans['seq'] = df_trans.groupby('interview__id').cumcount() + 1
+
+    def relative_translation_positions(group):
+        total_rows = len(group)
+        translation_positions = group.loc[group['event'] == 'TranslationSwitched', 'seq']
+        return [pos / total_rows for pos in translation_positions]
+
+    # include_groups=False: 'interview__id' is not needed inside the function; suppresses FutureWarning
+    # in pandas 2.2+ where including the grouping column in the passed group is deprecated.
+    result = df_trans.groupby('interview__id').apply(
+        relative_translation_positions, include_groups=False
+    ).reset_index()
+    result.columns = ['interview__id', feature_name]
+
+    df_unit[feature_name] = df_unit['interview__id'].map(
+        result.set_index('interview__id')[feature_name]
+    )
+    return df_unit
+
 
 UNIT_FEATURE_MAP = {
     'number_answered': _feat_unit_number_answered,
     'number_unanswered': _feat_unit_number_unanswered,
-    # ... Add others as needed from feature_processing.py
+    'translation_positions': _feat_unit_translation_positions,
 }
 
-def enrich_unit_features(df_unit: pd.DataFrame, item_features: pd.DataFrame, parameters: dict) -> pd.DataFrame:
+def enrich_unit_features(df_unit: pd.DataFrame, item_features: pd.DataFrame, paradata_full: pd.DataFrame, parameters: dict) -> pd.DataFrame:
     """
     Applies feature engineering logic to the unit table.
+    paradata_full: all processed events, role=1, interviewing=True (self.df_paradata equivalent).
+    Required for f__translation_positions.
     """
     logger.info("Enriching unit features...")
     allowed_features = parameters.get('features', {})
-    
+
     for feat_key, feat_cfg in allowed_features.items():
-         if feat_cfg.get('use', False):
-            # Prefix mapping check? "f__" is usually stripped in config keys?
-            # Config keys: 'string_length', 'number_answered'
-            
+        if feat_cfg.get('use', False):
             func = UNIT_FEATURE_MAP.get(feat_key)
             if func:
                 logger.info(f"Calculating unit feature: {feat_key}")
                 try:
-                    df_unit = func(df_unit, item_features=item_features)
+                    df_unit = func(df_unit, item_features=item_features, paradata_full=paradata_full)
                 except Exception as e:
                     logger.warning(f"Failed to calculate {feat_key}: {e}")
-                    
+
     return df_unit

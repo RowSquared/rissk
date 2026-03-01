@@ -47,6 +47,24 @@ unit_features_base:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/20_INTERIM/unit_features_base.parquet
 
+# === LEGACY DATA FOR PIPELINE TESTING ===
+# Uncomment these and update pipeline.py inputs to test against legacy-produced data.
+#
+# legacy_microdata:
+#   type: pandas.ParquetDataset
+#   filepath: /Users/vanessa/Work/Rowsquared/RISSK/rissk/data/hies2024/latest/30_PROCESSED/microdata.parquet
+#
+# # Equivalent to paradata_processed (output of process_paradata_node).
+# # The legacy pipeline saved this as paradata.parquet (not paradata_processed.parquet).
+# legacy_paradata_processed:
+#   type: pandas.ParquetDataset
+#   filepath: /Users/vanessa/Work/Rowsquared/RISSK/rissk/data/hies2024/latest/30_PROCESSED/paradata.parquet
+#
+# # Equivalent to paradata_active (output of filter_active_paradata_node).
+# legacy_paradata_active:
+#   type: pandas.ParquetDataset
+#   filepath: /Users/vanessa/Work/Rowsquared/RISSK/rissk/data/hies2024/latest/30_PROCESSED/paradata_active.parquet
+
 # Final Feature Tables (Input to Risk Scoring)
 item_features:
   type: pandas.ParquetDataset
@@ -55,12 +73,3 @@ item_features:
 unit_features:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/unit_features.parquet
-
-# === LEGACY DATA FOR TESTING ===
-legacy_microdata:
-  type: pandas.ParquetDataset
-  filepath: /Users/vanessa/Work/Rowsquared/RISSK/rissk/data/hies2024/latest/30_PROCESSED/microdata.parquet
-
-legacy_paradata_active:
-  type: pandas.ParquetDataset
-  filepath: /Users/vanessa/Work/Rowsquared/RISSK/rissk/data/hies2024/latest/30_PROCESSED/paradata_active.parquet

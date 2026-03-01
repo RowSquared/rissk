@@ -34,21 +34,26 @@ def create_base_unit_table_node(
     return create_base_unit_table(paradata_active, parameters)
 
 def enrich_item_features_node(
-    item_features_base: pd.DataFrame, 
-    paradata_active: pd.DataFrame, 
+    item_features_base: pd.DataFrame,
+    paradata_active: pd.DataFrame,
+    paradata_full: pd.DataFrame,
     parameters: Dict[str, Any]
 ) -> pd.DataFrame:
     """
     Node wrapper for enrich_item_features.
+    paradata_active: active interviewer events only (equivalent to self.df_active_paradata).
+    paradata_full: all processed events, role=1, interviewing=True (equivalent to self.df_paradata).
     """
-    return enrich_item_features(item_features_base, paradata_active, parameters)
+    return enrich_item_features(item_features_base, paradata_active, paradata_full, parameters)
 
 def enrich_unit_features_node(
-    unit_features_base: pd.DataFrame, 
-    item_features: pd.DataFrame, 
+    unit_features_base: pd.DataFrame,
+    item_features: pd.DataFrame,
+    paradata_full: pd.DataFrame,
     parameters: Dict[str, Any]
 ) -> pd.DataFrame:
     """
     Node wrapper for enrich_unit_features.
+    paradata_full: all processed events, role=1, interviewing=True (equivalent to self.df_paradata).
     """
-    return enrich_unit_features(unit_features_base, item_features, parameters)
+    return enrich_unit_features(unit_features_base, item_features, paradata_full, parameters)

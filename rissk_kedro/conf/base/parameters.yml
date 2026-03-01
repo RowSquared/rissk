@@ -40,7 +40,7 @@ features:
   first_digit:
     use: true
   last_digit:
-    use: false
+    use: true
   numeric_response:
     use: true
   sequence_jump:
@@ -59,9 +59,10 @@ features:
     use: true
     contamination: 0.11
   pause_list:
-    use: false
+    use: true
+    contamination: 0.11
   number_unanswered:
-    use: false
+    use: true
   number_answered:
     use: true
     contamination: 0.11
@@ -76,7 +77,7 @@ features:
   multi_option_question:
     use: true
   days_from_start:
-    use: false
+    use: true
 
 # Output Configuration
 output:

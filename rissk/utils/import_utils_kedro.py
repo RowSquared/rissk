@@ -390,14 +390,6 @@ def get_microdata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFr
     drop_list = ['interview__key', 'sssys_irnd', 'has__errors', 'interview__status', 'assignment__id']
 
     file_names = get_microdata_file_list(data_path)
-    
-    # # Pre-calculate masks outside loop
-    # # Pre-initialize these variable lists once so they exist when the questionnaire DF is empty
-    # # (avoids NameError and avoids recalculating per-file).
-    # multi_unlinked_vars = []
-    # multi_linked_vars = []
-    # list_vars = []
-    # gps_vars = []
 
     # define multi/list question conditions
     if not df_questionnaires.empty:
@@ -473,7 +465,10 @@ def get_microdata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFr
     
     def is_valid_fast(val):
         if val is None: return False
-        if isinstance(val, (list, tuple)): return len(val) > 0 # Empty list should be invalid? Legacy: 'return True'
+        if isinstance(val, (list, tuple)): 
+            if len(val) == 0: return False
+            # Filter out lists that contain only NaNs or empty strings
+            return any(pd.notna(x) and x != '' for x in val)
         if isinstance(val, (np.ndarray,)): return val.size > 0
         if isinstance(val, str) and val == '': return False
         # Fallback for other types where equality might be array-like (though unlikely for scalars)
