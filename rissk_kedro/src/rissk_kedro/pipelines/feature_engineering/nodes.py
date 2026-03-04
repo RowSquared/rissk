@@ -4,6 +4,8 @@ import numpy as np
 from typing import Dict
 from loguru import logger
 
+from rissk.feature_processing_kedro import make_index_col
+
 
 def process_paradata_node(
     paradata_interim: pd.DataFrame,
@@ -39,22 +41,7 @@ def process_paradata_node(
     paradata.drop(['flag', 'cumulative_flag'], axis=1, inplace=True)
     paradata = paradata[(paradata['interviewing'] == True) & (paradata['role'] == 1)].copy()
     
-    # Implement make_index_col logic (concat ID parts)
-    # Using '_' separator to match previous notebook logic
-    def make_index_col(df):
-        mask = (~df[['interview__id', 'variable_name', 'roster_level']].isnull()) & \
-                (df[['interview__id', 'variable_name', 'roster_level']] != '')
-        filtered_df = df.where(mask, '')
-
-        # Concatenate the columns with an underscore separator
-        df['index_col'] = (
-            filtered_df['interview__id'].astype(str) + "_" +
-            filtered_df['variable_name'].astype(str) + "_" +
-            filtered_df['roster_level'].astype(str)
-        )
-        df['index_col'] = df['index_col'].str.strip('_')
-        return df
-    
+    # Use shared helper to avoid drift with feature_processing_kedro
     paradata = make_index_col(paradata)
     
     # Sort by interview__id, order

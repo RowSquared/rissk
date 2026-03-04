@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 # --- Helper Functions ---
 
-def _make_index_col(df: pd.DataFrame) -> pd.DataFrame:
+def make_index_col(df: pd.DataFrame) -> pd.DataFrame:
     """Creates a unique index column based on interview_id, variable_name, and roster_level."""
     # Filter out columns with NaN and empty strings for the mask
     # Using fillna('') to handle NaNs safely for string concatenation
@@ -23,7 +23,7 @@ def _make_index_col(df: pd.DataFrame) -> pd.DataFrame:
     df['index_col'] = df['index_col'].str.strip('_')
     return df
 
-def _get_numeric_mask(df_item: pd.DataFrame) -> pd.Series:
+def get_numeric_mask(df_item: pd.DataFrame) -> pd.Series:
     """Returns a boolean mask for valid numeric question rows, matching the legacy numeric_question_mask."""
     return (
         (df_item["qtype"] == 'NumericQuestion') &
@@ -32,7 +32,7 @@ def _get_numeric_mask(df_item: pd.DataFrame) -> pd.Series:
         (df_item['value'] != -999999999)
     )
 
-def _get_df_time(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
+def get_df_time(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
     """Calculates time differences and durations from paradata."""
     df_time = df_active_paradata.copy()
 
@@ -76,7 +76,7 @@ def _get_df_time(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
 
     return df_time
 
-def _get_df_sequence(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
+def get_df_sequence(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
     """Calculates sequence-based features (jumps, previous answers)."""
     # Filter for AnswerSet and get the last entry per index_col
     mask = df_active_paradata['event'] == 'AnswerSet'
@@ -107,7 +107,7 @@ def _get_df_sequence(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
 
     return df_last
 
-def _add_sequence_features(df_item: pd.DataFrame, df_sequence: pd.DataFrame, allowed_features: list) -> pd.DataFrame:
+def add_sequence_features(df_item: pd.DataFrame, df_sequence: pd.DataFrame, allowed_features: list) -> pd.DataFrame:
     sequence_features = ['f__previous_question', 'f__previous_answer',
                          'f__previous_roster', 'f__sequence_jump']
     
@@ -125,7 +125,7 @@ def _add_sequence_features(df_item: pd.DataFrame, df_sequence: pd.DataFrame, all
             
     return df_item
 
-def _add_item_time_features(df_item: pd.DataFrame, df_time: pd.DataFrame, allowed_features: list, item_level_columns: list) -> pd.DataFrame:
+def add_item_time_features(df_item: pd.DataFrame, df_time: pd.DataFrame, allowed_features: list, item_level_columns: list) -> pd.DataFrame:
     time_features = ['f__answer_duration', 'f__comment_duration']
     
     selected_features = [f for f in time_features if f in allowed_features]
@@ -155,7 +155,7 @@ def _add_item_time_features(df_item: pd.DataFrame, df_time: pd.DataFrame, allowe
             
     return df_item
 
-def _add_pause_features(df_unit: pd.DataFrame, df_time: pd.DataFrame, allowed_features: list) -> pd.DataFrame:
+def add_pause_features(df_unit: pd.DataFrame, df_time: pd.DataFrame, allowed_features: list) -> pd.DataFrame:
     pause_features = ['f__pause_count', 'f__pause_duration', 'f__pause_list']
     selected_features = [f for f in pause_features if f in allowed_features]
 
@@ -195,7 +195,7 @@ def _add_pause_features(df_unit: pd.DataFrame, df_time: pd.DataFrame, allowed_fe
 
     return df_unit
 
-def _add_unit_time_features(df_unit: pd.DataFrame, df_time: pd.DataFrame, allowed_features: list) -> pd.DataFrame:
+def add_unit_time_features(df_unit: pd.DataFrame, df_time: pd.DataFrame, allowed_features: list) -> pd.DataFrame:
     time_features = ['f__total_duration', 'f__total_elapse', 'f__days_from_start', 'f__time_changed']
     selected_features = [f for f in time_features if f in allowed_features]
     
@@ -231,7 +231,7 @@ def create_base_item_table(microdata: pd.DataFrame, paradata_active: pd.DataFram
     allowed_features = ['f__' + k for k, v in parameters['features'].items() if v.get('use', False)]
 
     # 1. Create Index Column on Microdata
-    df_item = _make_index_col(microdata.copy())
+    df_item = make_index_col(microdata.copy())
     
     # 2. Select initial columns
     initial_cols = ['value', "qtype", 'is_integer', 'qnr_seq',
@@ -250,10 +250,9 @@ def create_base_item_table(microdata: pd.DataFrame, paradata_active: pd.DataFram
     
     answer_set_mask = (paradata_active['event'] == 'AnswerSet')
     
-    # Ensure index_col exists in paradata. It should be there from ingestion/processing. 
-    # If not, we might need to recreate it. Assuming it exists or we create it.
-    if 'index_col' not in paradata_active.columns:
-        paradata_active = _make_index_col(paradata_active.copy())
+ # # Already present in paradata_active from ingestion, but ensure it's there for merging
+    # if 'index_col' not in paradata_active.columns:
+    #     paradata_active = make_index_col(paradata_active.copy())
         
     data_to_merge = paradata_active[answer_set_mask].drop_duplicates(subset='index_col', keep='last')
     
@@ -261,19 +260,18 @@ def create_base_item_table(microdata: pd.DataFrame, paradata_active: pd.DataFram
     df_item = df_item.merge(data_to_merge[available_para_cols + ['index_col']], how='left', on='index_col')
 
     # 5. Filter for 'interviewing' == True (Supervisor Logic)
-    if 'interviewing' in df_item.columns:
-        # Fill NaN with False or True? Original code assumed boolean column.
-        df_item = df_item[df_item['interviewing'] == True]
+    # Remove items that are not in interviewing
+    df_item = df_item[df_item['interviewing'] == True].copy()
 
     # 6. Add Sequence Features
     # Pre-calculate sequence df
-    df_sequence = _get_df_sequence(paradata_active)
-    df_item = _add_sequence_features(df_item, df_sequence, allowed_features)
+    df_sequence = get_df_sequence(paradata_active)
+    df_item = add_sequence_features(df_item, df_sequence, allowed_features)
 
     # 7. Add Time Features
     # Pre-calculate time df
-    df_time = _get_df_time(paradata_active)
-    df_item = _add_item_time_features(df_item, df_time, allowed_features, item_level_columns)
+    df_time = get_df_time(paradata_active)
+    df_item = add_item_time_features(df_item, df_time, allowed_features, item_level_columns)
 
     return df_item
 
@@ -296,18 +294,18 @@ def create_base_unit_table(paradata_active: pd.DataFrame, parameters: dict) -> p
     df_unit = df_unit[(df_unit['responsible'] != '') & (df_unit['responsible'].notna())]
     
     # 2. Add Pause Features
-    df_time = _get_df_time(paradata_active)
-    df_unit = _add_pause_features(df_unit, df_time, allowed_features)
+    df_time = get_df_time(paradata_active)
+    df_unit = add_pause_features(df_unit, df_time, allowed_features)
     
     # 3. Add Unit Time Features
-    df_unit = _add_unit_time_features(df_unit, df_time, allowed_features)
+    df_unit = add_unit_time_features(df_unit, df_time, allowed_features)
     
     return df_unit
 
 
 # --- Feature Enrichment Functions (Item) ---
 
-def _feat_string_length(df_item, **kwargs):
+def feat_string_length(df_item, **kwargs):
     feature_name = 'f__string_length'
     mask = df_item["qtype"] == 'TextQuestion'
     df_item[feature_name] = pd.NA
@@ -316,17 +314,17 @@ def _feat_string_length(df_item, **kwargs):
         df_item.loc[mask, feature_name] = df_item.loc[mask, 'value'].str.len().astype('Int64')
     return df_item
 
-def _feat_numeric_response(df_item, **kwargs):
+def feat_numeric_response(df_item, **kwargs):
     feature_name = 'f__numeric_response'
-    numeric_mask = _get_numeric_mask(df_item)
+    numeric_mask = get_numeric_mask(df_item)
     df_item[feature_name] = np.nan
     if numeric_mask.any():
         df_item.loc[numeric_mask, feature_name] = pd.to_numeric(df_item.loc[numeric_mask, 'value'], errors='coerce')
     return df_item
 
-def _feat_first_digit(df_item, **kwargs):
+def feat_first_digit(df_item, **kwargs):
     feature_name = 'f__first_digit'
-    numeric_mask = _get_numeric_mask(df_item)
+    numeric_mask = get_numeric_mask(df_item)
     df_item[feature_name] = pd.NA
     if numeric_mask.any():
         # Take absolute value, convert to string, extract first character
@@ -334,10 +332,10 @@ def _feat_first_digit(df_item, **kwargs):
         df_item.loc[numeric_mask, feature_name] = pd.to_numeric(vals, errors='coerce').astype('Int64')
     return df_item
 
-def _feat_last_digit(df_item, **kwargs):
+def feat_last_digit(df_item, **kwargs):
     feature_name = 'f__last_digit'
     # Use the same mask as legacy: excludes empty, null, and -999999999
-    numeric_mask = _get_numeric_mask(df_item)
+    numeric_mask = get_numeric_mask(df_item)
     df_item[feature_name] = pd.NA
 
     if numeric_mask.any():
@@ -349,7 +347,7 @@ def _feat_last_digit(df_item, **kwargs):
 
     return df_item
 
-def _feat_first_decimal(df_item, **kwargs):
+def feat_first_decimal(df_item, **kwargs):
     feature_name = 'f__first_decimal'
     # mask: not integer and not empty
     mask = (df_item['is_integer'] == False) & (df_item['value'] != '')
@@ -368,7 +366,7 @@ def _feat_first_decimal(df_item, **kwargs):
         
     return df_item
 
-def _feat_answer_position(df_item, **kwargs):
+def feat_answer_position(df_item, **kwargs):
     feature_name = 'f__answer_position' # in legacy it was f__rel_answer_position sometimes? code says f__answer_position
     
     # filters
@@ -401,7 +399,7 @@ def _feat_answer_position(df_item, **kwargs):
         
     return df_item
 
-def _feat_answer_changed(df_item, **kwargs):
+def feat_answer_changed(df_item, **kwargs):
     """
     ⚠️ Legacy bug fixed: the legacy code applied the yes_list change
     check and immediately overwrote it with the no_list check (two separate .loc assignments
@@ -418,7 +416,7 @@ def _feat_answer_changed(df_item, **kwargs):
     df_changed = paradata_active[paradata_active['event'] == 'AnswerSet'].copy()
 
     if 'index_col' not in df_changed.columns:
-        df_changed = _make_index_col(df_changed)
+        df_changed = make_index_col(df_changed)
 
     df_changed[feature_name] = False
     group_cols = [c for c in item_level_columns + ['index_col'] if c in df_changed.columns]
@@ -474,7 +472,7 @@ def _feat_answer_changed(df_item, **kwargs):
 
     return df_item
 
-def _feat_answer_selected(df_item, **kwargs):
+def feat_answer_selected(df_item, **kwargs):
     feature_name = 'f__answer_selected'
     mask = df_item["qtype"].isin(['MultyOptionsQuestion'])
     
@@ -496,7 +494,7 @@ def _feat_answer_selected(df_item, **kwargs):
         
     return df_item
 
-def _feat_gps(df_item, **kwargs):
+def feat_gps(df_item, **kwargs):
     # Sets f__gps boolean flag plus f__gps_latitude, f__gps_longitude, f__gps_accuracy
     feature_name = 'f__gps'
     mask = df_item["qtype"] == 'GpsCoordinateQuestion'
@@ -512,7 +510,7 @@ def _feat_gps(df_item, **kwargs):
     return df_item
 
 
-def _feat_comment_length(df_item, **kwargs):
+def feat_comment_length(df_item, **kwargs):
     """Total character length of all comments left on each item.
     Matches legacy make_feature_item__comment_length which uses self.df_paradata
     (all events, role=1, interviewing=True — not limited to active events).
@@ -531,7 +529,7 @@ def _feat_comment_length(df_item, **kwargs):
         return df_item
 
     if 'index_col' not in df_comment.columns:
-        df_comment = _make_index_col(df_comment)
+        df_comment = make_index_col(df_comment)
 
     df_comment[feature_name] = df_comment['answer'].str.len()
     df_agg = df_comment.groupby('index_col').agg(f__comment_length=(feature_name, 'sum'))
@@ -539,7 +537,7 @@ def _feat_comment_length(df_item, **kwargs):
     return df_item
 
 
-def _feat_comment_set(df_item, **kwargs):
+def feat_comment_set(df_item, **kwargs):
     """Count of CommentSet events per item.
     Matches legacy make_feature_item__comment_set which uses self.df_paradata
     (all events, role=1, interviewing=True — not limited to active events).
@@ -558,14 +556,14 @@ def _feat_comment_set(df_item, **kwargs):
         return df_item
 
     if 'index_col' not in df_comment.columns:
-        df_comment = _make_index_col(df_comment)
+        df_comment = make_index_col(df_comment)
 
     df_agg = df_comment.groupby('index_col').agg(f__comment_set=('order', 'count'))
     df_item[feature_name] = df_item['index_col'].map(df_agg['f__comment_set'])
     return df_item
 
 
-def _feat_answer_removed(df_item, **kwargs):
+def feat_answer_removed(df_item, **kwargs):
     """Count of AnswerRemoved events per item.
     Matches legacy get_feature_item__answer_removed which uses self.df_paradata
     (all events, role=1, interviewing=True — not limited to active events).
@@ -600,18 +598,18 @@ def _feat_answer_removed(df_item, **kwargs):
 
 # Dispatcher
 ITEM_FEATURE_MAP = {
-    'string_length': _feat_string_length,
-    'numeric_response': _feat_numeric_response,
-    'first_digit': _feat_first_digit,
-    'last_digit': _feat_last_digit,
-    'first_decimal': _feat_first_decimal,
-    'answer_position': _feat_answer_position,
-    'answer_changed': _feat_answer_changed,
-    'answer_selected': _feat_answer_selected,
-    'answer_removed': _feat_answer_removed,
-    'comment_length': _feat_comment_length,
-    'comment_set': _feat_comment_set,
-    'gps': _feat_gps,
+    'string_length': feat_string_length,
+    'numeric_response': feat_numeric_response,
+    'first_digit': feat_first_digit,
+    'last_digit': feat_last_digit,
+    'first_decimal': feat_first_decimal,
+    'answer_position': feat_answer_position,
+    'answer_changed': feat_answer_changed,
+    'answer_selected': feat_answer_selected,
+    'answer_removed': feat_answer_removed,
+    'comment_length': feat_comment_length,
+    'comment_set': feat_comment_set,
+    'gps': feat_gps,
 }
 
 
@@ -626,9 +624,9 @@ def enrich_item_features(df_item: pd.DataFrame, paradata_active: pd.DataFrame, p
 
     # Ensure index_col in paradata for lookups
     if 'index_col' not in paradata_active.columns:
-        paradata_active = _make_index_col(paradata_active.copy())
+        paradata_active = make_index_col(paradata_active.copy())
     if 'index_col' not in paradata_full.columns:
-        paradata_full = _make_index_col(paradata_full.copy())
+        paradata_full = make_index_col(paradata_full.copy())
 
     for feat_key, feat_cfg in allowed_features.items():
         if feat_cfg.get('use', False):
@@ -645,7 +643,7 @@ def enrich_item_features(df_item: pd.DataFrame, paradata_active: pd.DataFrame, p
 
 # --- Feature Enrichment Functions (Unit) ---
 
-def _feat_unit_number_answered(df_unit, item_features, **kwargs):
+def feat_unit_number_answered(df_unit, item_features, **kwargs):
     feature_name = 'f__number_answered'
     # Match legacy make_feature_unit__number_answered: exclude null, -999999999, '##N/A##',
     # empty string, and Variable-type questions
@@ -662,7 +660,7 @@ def _feat_unit_number_answered(df_unit, item_features, **kwargs):
     df_unit[feature_name] = df_unit['interview__id'].map(df_agg['f__number_answered']).fillna(0)
     return df_unit
 
-def _feat_unit_number_unanswered(df_unit, item_features, **kwargs):
+def feat_unit_number_unanswered(df_unit, item_features, **kwargs):
     feature_name = 'f__number_unanswered'
     # Match legacy make_feature_unit__number_unanswered: -999999999 or '##N/A##', excluding Variable type
     mask = (
@@ -678,7 +676,7 @@ def _feat_unit_number_unanswered(df_unit, item_features, **kwargs):
     df_unit[feature_name] = df_unit['interview__id'].map(df_agg['f__number_unanswered']).fillna(0)
     return df_unit
 
-def _feat_unit_translation_positions(df_unit, item_features, **kwargs):
+def feat_unit_translation_positions(df_unit, item_features, **kwargs):
     """Relative positions of TranslationSwitched events within each interview.
     Matches legacy make_feature_unit__translation_positions which uses self.df_paradata.
 
@@ -716,9 +714,9 @@ def _feat_unit_translation_positions(df_unit, item_features, **kwargs):
 
 
 UNIT_FEATURE_MAP = {
-    'number_answered': _feat_unit_number_answered,
-    'number_unanswered': _feat_unit_number_unanswered,
-    'translation_positions': _feat_unit_translation_positions,
+    'number_answered': feat_unit_number_answered,
+    'number_unanswered': feat_unit_number_unanswered,
+    'translation_positions': feat_unit_translation_positions,
 }
 
 def enrich_unit_features(df_unit: pd.DataFrame, item_features: pd.DataFrame, paradata_full: pd.DataFrame, parameters: dict) -> pd.DataFrame:
