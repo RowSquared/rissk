@@ -36,9 +36,6 @@ def get_df_time(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
     """Calculates time differences and durations from paradata."""
     df_time = df_active_paradata.copy()
 
-    # Sort to ensure diff works correctly
-    df_time = df_time.sort_values(['interview__id', 'timestamp_local'])
-
     # calculate time difference in seconds
     df_time['time_difference'] = df_time.groupby('interview__id')['timestamp_local'].diff()
     df_time['time_difference'] = df_time['time_difference'].dt.total_seconds()
@@ -48,7 +45,7 @@ def get_df_time(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
     
     # Mask negative time differences for duration calculations
     # Using pd.NA for nullable integers/floats in pandas if column allows, or np.nan
-    df_time.loc[df_time['time_difference'] < 0, 'time_difference'] = np.nan
+    df_time.loc[df_time['time_difference'] < 0, 'time_difference'] = pd.NA
 
     # time for answers/comments
     df_time['f__answer_duration'] = df_time.loc[
@@ -159,61 +156,46 @@ def add_pause_features(df_unit: pd.DataFrame, df_time: pd.DataFrame, allowed_fea
     pause_features = ['f__pause_count', 'f__pause_duration', 'f__pause_list']
     selected_features = [f for f in pause_features if f in allowed_features]
 
-    if selected_features:
-        # Calculate pause stats per interview
-        # f__pause_duration column in df_time contains the duration for Resumed/Restarted events
-        
-        # Custom aggregation for list
-        def to_list(x):
-            return x.tolist()
+    if not selected_features:
+        return df_unit
 
-        agg_dict = {}
-        if 'f__pause_count' in selected_features:
-             # count all occurrences (size) where pause_duration is not null is implied by how df_time was built?
-             # Actually df_time['f__pause_duration'] is NaN for non-pause events.
-             # So we should count non-nulls. 'count' counts non-NA. 'size' counts matches.
-             agg_dict['f__pause_count'] = ('f__pause_duration', 'count')
-        if 'f__pause_duration' in selected_features:
-             agg_dict['f__pause_duration'] = ('f__pause_duration', 'sum')
-        if 'f__pause_list' in selected_features:
-             # This might be tricky in aggregation if all are NaN. 
-             # We filter first.
-             pass
+    # Legacy-like flow: compute all pause aggregations once, then keep selected columns.
+    # Keep the correction vs legacy: count only non-null pauses.
+    df_pause = df_time.groupby('interview__id').agg(
+        f__pause_count=('f__pause_duration', 'count'),
+        f__pause_duration=('f__pause_duration', 'sum'),
+        # Keep only real pause durations; all-NaN groups become an empty list.
+        f__pause_list=('f__pause_duration', lambda x: [v for v in x.tolist() if pd.notna(v)]),
+    ).reset_index()
 
-        if agg_dict:
-            df_pause = df_time.groupby('interview__id').agg(**agg_dict).reset_index()
-            
-            # Handle list separately if needed or include in agg above if simple
-            if 'f__pause_list' in selected_features:
-                 # Only rows with valid pause duration
-                 pause_rows = df_time.dropna(subset=['f__pause_duration'])
-                 if not pause_rows.empty:
-                    list_agg = pause_rows.groupby('interview__id')['f__pause_duration'].apply(list).reset_index(name='f__pause_list')
-                    df_pause = df_pause.merge(list_agg, how='left', on='interview__id')
-            
-            df_unit = df_unit.merge(df_pause, how='left', on='interview__id')
+    df_pause = df_pause[['interview__id'] + selected_features]
+    df_unit = df_unit.merge(df_pause, how='left', on='interview__id')
+
+    if 'f__pause_list' in selected_features:
+        # Ensure interviews absent in df_time also get an empty list after merge.
+        df_unit['f__pause_list'] = df_unit['f__pause_list'].apply(
+            lambda x: x if isinstance(x, list) else []
+        )
 
     return df_unit
 
 def add_unit_time_features(df_unit: pd.DataFrame, df_time: pd.DataFrame, allowed_features: list) -> pd.DataFrame:
     time_features = ['f__total_duration', 'f__total_elapse', 'f__days_from_start', 'f__time_changed']
     selected_features = [f for f in time_features if f in allowed_features]
-    
-    if selected_features:
-        agg_dict = {}
-        if 'f__total_duration' in selected_features:
-            agg_dict['f__total_duration'] = ('f__total_duration', 'sum')
-        if 'f__total_elapse' in selected_features:
-            # Lambda in agg is slower, but compatible.
-             agg_dict['f__total_elapse'] = ('timestamp_local', lambda x: (x.max() - x.min()).total_seconds() if not x.empty else 0)
-        if 'f__time_changed' in selected_features:
-            agg_dict['f__time_changed'] = ('f__time_changed', 'sum')
-        if 'f__days_from_start' in selected_features:
-            agg_dict['f__days_from_start'] = ('f__days_from_start', 'min')
 
-        if agg_dict:
-            df_dur = df_time.groupby('interview__id').agg(**agg_dict).reset_index()
-            df_unit = df_unit.merge(df_dur, how='left', on='interview__id')
+    if not selected_features:
+        return df_unit
+
+    # Legacy-like flow: compute all unit-time aggregations once, then keep selected columns.
+    df_dur = df_time.groupby('interview__id').agg(
+        f__total_duration=('f__total_duration', 'sum'),
+        f__total_elapse=('timestamp_local', lambda x: (x.max() - x.min()).total_seconds()),
+        f__time_changed=('f__time_changed', 'sum'),
+        f__days_from_start=('f__days_from_start', 'min'),
+    ).reset_index()
+
+    df_dur = df_dur[['interview__id'] + selected_features]
+    df_unit = df_unit.merge(df_dur, how='left', on='interview__id')
 
     return df_unit
 
@@ -230,18 +212,23 @@ def create_base_item_table(microdata: pd.DataFrame, paradata_active: pd.DataFram
     item_level_columns = ['interview__id', 'variable_name', 'roster_level']
     allowed_features = ['f__' + k for k, v in parameters['features'].items() if v.get('use', False)]
 
+    sequence_features = ['f__previous_question', 'f__previous_answer', 'f__previous_roster', 'f__sequence_jump']
+    time_features = ['f__answer_duration', 'f__comment_duration']
+    calculate_sequence = any(f in allowed_features for f in sequence_features)
+    calculate_time = any(f in allowed_features for f in time_features)
+
     # 1. Create Index Column on Microdata
     df_item = make_index_col(microdata.copy())
     
     # 2. Select initial columns
-    initial_cols = ['value', "qtype", 'is_integer', 'qnr_seq',
+    columns = ['value', "qtype", 'is_integer', 'qnr_seq',
                     'n_answers', 'answer_sequence',
                     'cascade_from_question_id', 'is_filtered_combobox',
                     'index_col'] + item_level_columns
     
     # Intersect with available columns to avoid KeyErrors
-    cols_to_keep = [c for c in initial_cols if c in df_item.columns]
-    df_item = df_item[cols_to_keep]
+    # columns = [c for c in columns if c in df_item.columns]
+    df_item = df_item[columns].copy()
 
     # 3. Prepare Paradata for Merge
     # We want the *last* AnswerSet for each item
@@ -254,7 +241,11 @@ def create_base_item_table(microdata: pd.DataFrame, paradata_active: pd.DataFram
     # if 'index_col' not in paradata_active.columns:
     #     paradata_active = make_index_col(paradata_active.copy())
         
-    data_to_merge = paradata_active[answer_set_mask].drop_duplicates(subset='index_col', keep='last')
+    data_to_merge = (
+        paradata_active[answer_set_mask]
+        .dropna(subset=['index_col'])             # drop rows without index_col
+        .drop_duplicates(subset='index_col', keep='last')
+        )
     
     # 4. Merge
     df_item = df_item.merge(data_to_merge[available_para_cols + ['index_col']], how='left', on='index_col')
@@ -264,14 +255,14 @@ def create_base_item_table(microdata: pd.DataFrame, paradata_active: pd.DataFram
     df_item = df_item[df_item['interviewing'] == True].copy()
 
     # 6. Add Sequence Features
-    # Pre-calculate sequence df
-    df_sequence = get_df_sequence(paradata_active)
-    df_item = add_sequence_features(df_item, df_sequence, allowed_features)
+    if calculate_sequence:
+        df_sequence = get_df_sequence(paradata_active)
+        df_item = add_sequence_features(df_item, df_sequence, allowed_features)
 
     # 7. Add Time Features
-    # Pre-calculate time df
-    df_time = get_df_time(paradata_active)
-    df_item = add_item_time_features(df_item, df_time, allowed_features, item_level_columns)
+    if calculate_time:
+        df_time = get_df_time(paradata_active)
+        df_item = add_item_time_features(df_item, df_time, allowed_features, item_level_columns)
 
     return df_item
 
@@ -284,21 +275,26 @@ def create_base_unit_table(paradata_active: pd.DataFrame, parameters: dict) -> p
     allowed_features = ['f__' + k for k, v in parameters['features'].items() if v.get('use', False)]
     
     # 1. Initialize from paradata
-    cols = ['interview__id', 'responsible', 'survey_name', 'survey_version']
-    cols = [c for c in cols if c in paradata_active.columns]
+    columns = ['interview__id', 'responsible', 'qnr', 'qnr_version']
+    # columns = [c for c in columns if c in paradata_active.columns]
     
-    df_unit = paradata_active[cols].copy()
+    df_unit = paradata_active[columns].copy()
     df_unit.drop_duplicates(inplace=True)
     
     # Filter valid responsible
     df_unit = df_unit[(df_unit['responsible'] != '') & (df_unit['responsible'].notna())]
     
-    # 2. Add Pause Features
-    df_time = get_df_time(paradata_active)
-    df_unit = add_pause_features(df_unit, df_time, allowed_features)
-    
-    # 3. Add Unit Time Features
-    df_unit = add_unit_time_features(df_unit, df_time, allowed_features)
+    pause_features = ['f__pause_count', 'f__pause_duration', 'f__pause_list']
+    unit_time_features = ['f__total_duration', 'f__total_elapse', 'f__days_from_start', 'f__time_changed']
+    calculate_pause = any(f in allowed_features for f in pause_features)
+    calculate_unit_time = any(f in allowed_features for f in unit_time_features)
+
+    if calculate_pause or calculate_unit_time:
+        df_time = get_df_time(paradata_active)
+        if calculate_pause:
+            df_unit = add_pause_features(df_unit, df_time, allowed_features)
+        if calculate_unit_time:
+            df_unit = add_unit_time_features(df_unit, df_time, allowed_features)
     
     return df_unit
 
