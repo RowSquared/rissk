@@ -9,7 +9,7 @@ from rissk.feature_processing_kedro import (
     create_base_item_table,
     create_base_unit_table,
     enrich_item_features,
-    enrich_unit_features
+    enrich_unit_features,
 )
 
 logger = logging.getLogger(__name__)

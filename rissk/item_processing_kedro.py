@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import logging
 from typing import List, Dict, Any, Tuple
+from pyod.models.thresholds import FILTER
 
 logger = logging.getLogger(__name__)
 
@@ -13,13 +14,16 @@ def rename_feature(feature_name: str, starting_string: str = 'f', new_string: st
         return feature_name.replace(starting_string, new_string)
     return feature_name
 
-def get_contamination_parameter(config_features: dict, feature_name: str, automatic_contamination: bool = False, method: str = 'medfilt', random_state: int = 42) -> float:
-    """Fetch contamination parameter from Kedro parameters/config features."""
+def get_contamination_parameter(config_features: dict, feature_name: str, automatic_contamination: bool = False, method: str = 'medfilt', random_state: int = 42):
+    """Fetch contamination parameter from Kedro parameters/config features.
+    
+    Returns a FILTER object for automatic contamination detection (matching legacy behaviour),
+    or a fixed float when a contamination value is explicitly configured.
+    """
     f_name = feature_name.replace('f__', '')
     contamination = config_features.get(f_name, {}).get('parameters', {}).get('contamination')
     if contamination is None or contamination == 'auto' or automatic_contamination is True:
-        # TODO: Add automatic detection from legacy ItemFeatureProcessing if required.
-        return 0.1
+        return FILTER(method=method, random_state=random_state)
     else:
         return float(contamination)
 
@@ -68,7 +72,6 @@ def get_clean_pivot_table(df_item: pd.DataFrame, feature_name: str, remove_low_f
 # (To be filled out next, mapping make_score__*)
 
 from pyod.models.ecod import ECOD
-from rissk.detection_algorithms_kedro import find_anomalies
 
 def calculate_answer_hour_set_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
     feature_name = 'f__answer_hour_set'
@@ -101,23 +104,26 @@ def calculate_answer_hour_set_score(df_item: pd.DataFrame, parameters: Dict[str,
 def calculate_sequence_jump_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
     feature_name = 'f__sequence_jump'
     score_name = rename_feature(feature_name)
-    df = df_item[~pd.isnull(df_item[feature_name])].copy()
-    valid_variables = filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=3)
+    df = df_item.copy()
+
+    if feature_name not in df.columns or df[feature_name].dropna().empty:
+        df[score_name] = np.nan
+        return df
+
+    valid_data = df[~pd.isnull(df[feature_name])].copy()
+    valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=3)
     df[score_name] = 0
     contamination = get_contamination_parameter(parameters.get('features', {}), feature_name)
-    
-    for var in valid_variables:
-        var_mask = df['variable_name'] == var
-        if df[var_mask].shape[0] > 0:
-            # Note: find_anomalies historically operates grouped by interview, so this requires
-            # matching the output to the df index
-            anomaly_df = find_anomalies(df[var_mask].copy(), contamination=contamination)
-            # In purely functional kedro, typically we map back via index_col or similar
-            if score_name in anomaly_df.columns:
-                 pass # Mapping logic goes here based on specific algorithm outputs
 
-    df_out = df_item.copy()
-    return df_out
+    from pyod.models.inne import INNE
+    for var in valid_variables:
+        mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
+        if mask.sum() > 0:
+            model = INNE(contamination=contamination, random_state=42)
+            model.fit(df.loc[mask, [feature_name]])
+            df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+
+    return df
 
 from pyod.models.cof import COF
 
@@ -169,33 +175,27 @@ def calculate_answer_changed_score(df_item: pd.DataFrame, parameters: Dict[str, 
             
     return df
 
-def calculate_answer_removed_score(df_item: pd.DataFrame, df_item_removed: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+def calculate_answer_removed_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
     feature_name = 'f__answer_removed'
     score_name = rename_feature(feature_name)
-    
-    # In legacy, this feature comes from df_item_removed instead of direct df_item mapped.
-    # Therefore, we pass in df_item_removed (grouped paradata) as a distinct input
-    df = df_item_removed.copy()
-    
-    if df.empty or feature_name not in df.columns:
-        df_item_out = df_item.copy()
-        df_item_out[score_name] = np.nan
-        return df_item_out
+    df = df_item.copy()
+
+    if feature_name not in df.columns or df[feature_name].dropna().empty:
+        df[score_name] = np.nan
+        return df
 
     valid_variables = filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=1)
-    df[score_name] = 0
+    df[score_name] = np.nan
+    df.loc[~pd.isnull(df[feature_name]), score_name] = 0
     contamination = get_contamination_parameter(parameters.get('features', {}), feature_name, method='medfilt', random_state=42)
-    
+
     for var in valid_variables:
-        mask = (df['variable_name'] == var)
+        mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
         if mask.sum() > 0:
             model = ECOD(contamination=contamination)
             model.fit(df.loc[mask, [feature_name]])
             df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
-            
-    # Typically this must be mapped back to df_item or remain as its own independent output.
-    # For now we'll integrate it by merging on interview__id or equivalent context, 
-    # but functionally we should return either the updated df or merge it onto df_item.
+
     return df
 
 from scipy.spatial import cKDTree
@@ -468,67 +468,81 @@ def calculate_first_digit_score(df_item: pd.DataFrame, parameters: Dict[str, Any
     return df
 
 def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
-    feature_name = 'f__gps'
-    score_name = rename_feature(feature_name)
     df = df_item.copy()
-    
-    if feature_name not in df.columns or df[feature_name].dropna().empty:
-        df[score_name] = np.nan
+
+    required_columns = ['f__gps_latitude', 'f__gps_longitude', 'f__gps_accuracy']
+    if any(col not in df.columns for col in required_columns):
+        for col in ['s__gps_proximity_counts', 's__gps_outlier', 's__gps_extreme_outlier']:
+            df[col] = np.nan
         return df
 
-    # Prepare DataFrame
-    df[score_name] = 0
-    df['latitude'] = np.nan
-    df['longitude'] = np.nan
-    df['valid_gps'] = False
-
-    # Extract valid coordinates silently
-    def extract_coords(val):
-        try:
-            val_list = eval(val)
-            if isinstance(val_list, list) and len(val_list) >= 2:
-                lat, lon = float(val_list[0]), float(val_list[1])
-                return lat, lon, True
-        except:
-            return np.nan, np.nan, False
-        return np.nan, np.nan, False
-
-    mask_valid = ~pd.isnull(df[feature_name])
-    if mask_valid.sum() == 0:
+    gps_mask = (~pd.isnull(df['f__gps_latitude'])) & (~pd.isnull(df['f__gps_longitude']))
+    if gps_mask.sum() == 0:
+        for col in ['s__gps_proximity_counts', 's__gps_outlier', 's__gps_extreme_outlier']:
+            df[col] = np.nan
         return df
 
-    coords = df.loc[mask_valid, feature_name].apply(extract_coords)
-    df.loc[mask_valid, 'latitude'] = coords.apply(lambda x: x[0])
-    df.loc[mask_valid, 'longitude'] = coords.apply(lambda x: x[1])
-    df.loc[mask_valid, 'valid_gps'] = coords.apply(lambda x: x[2])
+    data = df.loc[gps_mask].copy()
+    data['s__gps_extreme_outlier'] = 0
+    data.loc[data['f__gps_latitude'] == 0.0, 's__gps_extreme_outlier'] = 1
+    data.loc[data['f__gps_longitude'] == 0.0, 's__gps_extreme_outlier'] = 1
 
-    valid_data = df[df['valid_gps']]
-    if valid_data.empty: return df
+    data['x'], data['y'], data['z'] = lat_lon_to_cartesian(data['f__gps_latitude'], data['f__gps_longitude'])
+    data['accuracy'] = data['f__gps_accuracy'].fillna(0) / 1e6
 
-    # We need to project to cartesian map
-    valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=3)
-    
-    for var in valid_variables:
-        mask = (df['variable_name'] == var) & df['valid_gps']
-        if mask.sum() > 0:
-            latitudes = df.loc[mask, 'latitude'].values
-            longitudes = df.loc[mask, 'longitude'].values
-            
-            try:
-                # Need detection algorithms functions here
-                x, y, z = lat_lon_to_cartesian(latitudes, longitudes)
-                coordinates = np.column_stack((x, y, z))
-                tree = cKDTree(coordinates)
-                k = 3
-                if len(coordinates) > k:
-                    distances, indices = tree.query(coordinates, k=k)
-                    df.loc[mask, score_name] = distances[:, -1]
-                else:
-                    df.loc[mask, score_name] = 0.0
+    tree = cKDTree(data[['x', 'y', 'z']])
+    radius = 10 / 1e6
+    counts = [
+        len(tree.query_ball_point(xyz, r=radius + acc)) - 1
+        for xyz, acc in zip(data[['x', 'y', 'z']].values, data['accuracy'])
+    ]
+    data['s__gps_proximity_counts'] = counts
 
-            except NameError:
-                # lat_lon_to_cartesian not found
-                continue
+    mask = data['s__gps_extreme_outlier'] < 1
+    data['distance_to_median'] = np.nan
+    if mask.sum() > 0:
+        median_x = data.loc[mask].drop_duplicates(subset='x')['x'].median()
+        median_y = data.loc[mask].drop_duplicates(subset='y')['y'].median()
+        median_z = data.loc[mask].drop_duplicates(subset='z')['z'].median()
+
+        data.loc[mask, 'distance_to_median'] = np.sqrt(
+            (data.loc[mask, 'x'] - median_x) ** 2
+            + (data.loc[mask, 'y'] - median_y) ** 2
+            + (data.loc[mask, 'z'] - median_z) ** 2
+        )
+
+        p75 = data.loc[mask, 'distance_to_median'].quantile(0.75)
+        median = data.loc[mask, 'distance_to_median'].median()
+        range_75 = p75 - median
+        threshold = p75 + 3.5 * range_75
+        data.loc[mask, 's__gps_extreme_outlier'] = (
+            data.loc[mask, 'distance_to_median'] > threshold
+        ).astype(int)
+
+        contamination = get_contamination_parameter(
+            parameters.get('features', {}),
+            'f__gps',
+            method='medfilt',
+            random_state=42,
+        )
+        coords_columns = ['x', 'y']
+        if data.loc[mask].shape[0] < 10000:
+            model = COF(contamination=contamination)
+        else:
+            model = LOF(contamination=contamination, n_neighbors=20)
+        model.fit(data.loc[mask, coords_columns])
+        data.loc[mask, 's__gps_outlier'] = model.predict(data.loc[mask, coords_columns])
+    else:
+        data['s__gps_outlier'] = 0
+
+    data['s__gps_outlier'] = data['s__gps_outlier'].fillna(0)
+    df.loc[data.index, 's__gps_proximity_counts'] = data['s__gps_proximity_counts']
+    df.loc[data.index, 's__gps_outlier'] = data['s__gps_outlier']
+    df.loc[data.index, 's__gps_extreme_outlier'] = data['s__gps_extreme_outlier']
+
+    for col in ['s__gps_proximity_counts', 's__gps_outlier', 's__gps_extreme_outlier']:
+        if col in df.columns:
+            df[col] = df[col].fillna(0)
 
     return df
 

@@ -11,7 +11,7 @@ def create_pipeline(**kwargs) -> Pipeline:
     return pipeline([
         node(
             func=calculate_item_scores,
-            inputs=["item_features", "item_features_removed", "parameters"],
+            inputs=["item_features", "parameters"],
             outputs="item_scores",
             name="calculate_item_scores_node",
         ),

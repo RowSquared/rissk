@@ -27,15 +27,17 @@ from rissk.unit_processing_kedro import (
 
 logger = logging.getLogger(__name__)
 
-def calculate_item_scores(df_item: pd.DataFrame, df_item_removed: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+def calculate_item_scores(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
     """
     Run item level scoring applying various mathematical models.
+    f__answer_removed is already present in df_item from the feature creation pipeline.
     """
     logger.info("Calculating Item Scores...")
     df_scored = calculate_answer_hour_set_score(df_item, parameters)
     df_scored = calculate_sequence_jump_score(df_scored, parameters)
     df_scored = calculate_first_decimal_score(df_scored, parameters)
     df_scored = calculate_answer_changed_score(df_scored, parameters)
+    df_scored = calculate_answer_removed_score(df_scored, parameters)
     df_scored = calculate_answer_position_score(df_scored, parameters)
     df_scored = calculate_answer_selected_score(df_scored, parameters)
     df_scored = calculate_answer_duration_score(df_scored, parameters)
@@ -43,11 +45,6 @@ def calculate_item_scores(df_item: pd.DataFrame, df_item_removed: pd.DataFrame, 
     df_scored = calculate_multi_option_question_score(df_scored, parameters)
     df_scored = calculate_first_digit_score(df_scored, parameters)
     df_scored = calculate_gps_score(df_scored, parameters)
-    
-    # Needs to handle distinct output of removed scores mapping
-    df_removed_scored = calculate_answer_removed_score(df_scored, df_item_removed, parameters)
-    
-    # ... other item scores would be chained here ...
     return df_scored
 
 def calculate_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.DataFrame, parameters: Dict[str, Any]) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -67,7 +64,7 @@ def calculate_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.DataFrame, p
     df_resp_scored = aggregate_item_to_responsible_scores(df_resp_scored, df_item_scores)
     
     # 4. Calculate final responsible score via PCA
-    restricted_columns = parameters.get('scoring', {}).get('restricted_columns', [])
+    restricted_columns = parameters.get('unit_scoring', {}).get('restricted_columns', [])
     df_resp_scored = calculate_responsible_score(df_resp_scored, restricted_columns)
     
     # Determine all scored columns dynamically (s_*)

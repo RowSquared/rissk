@@ -4,7 +4,7 @@ from .nodes import (
     create_base_item_table_node,
     create_base_unit_table_node,
     enrich_item_features_node,
-    enrich_unit_features_node
+    enrich_unit_features_node,
 )
 
 def create_pipeline(**kwargs) -> Pipeline:
