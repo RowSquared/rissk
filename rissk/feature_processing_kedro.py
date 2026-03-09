@@ -731,13 +731,12 @@ def feat_unit_number_unanswered(df_unit, item_features, **kwargs):
     return df_unit
 
 def feat_unit_translation_positions(df_unit, item_features, **kwargs):
-    """Relative positions of TranslationSwitched events within each interview.
-    Matches legacy make_feature_unit__translation_positions which uses self.df_paradata.
+    # Relative positions of TranslationSwitched events within each interview.
+    # Returns a list of relative positions per interview.
 
-    Returns a list of relative positions (0..1) per interview.
-    """
     feature_name = 'f__translation_positions'
     paradata_full = kwargs.get('paradata_full')
+    df_unit[feature_name] = np.nan
     if paradata_full is None:
         return df_unit
 

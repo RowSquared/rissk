@@ -73,3 +73,20 @@ item_features:
 unit_features:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/unit_features.parquet
+# === PRE-SCORING DataFrames ===
+item_features_removed:
+  type: pandas.ParquetDataset
+  filepath: data/${globals:survey.name}/latest/20_INTERIM/item_features_removed.parquet
+
+# === SCORING DataFrames ===
+item_scores:
+  type: pandas.ParquetDataset
+  filepath: data/${globals:survey.name}/latest/40_SCORED/item_scores.parquet
+
+unit_risk_scores:
+  type: pandas.ParquetDataset
+  filepath: data/${globals:survey.name}/latest/40_SCORED/unit_risk_scores.parquet
+
+responsible_scores:
+  type: pandas.ParquetDataset
+  filepath: data/${globals:survey.name}/latest/40_SCORED/responsible_scores.parquet
