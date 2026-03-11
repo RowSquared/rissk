@@ -3,6 +3,19 @@ import numpy as np
 import logging
 from typing import List, Dict, Any, Tuple
 from pyod.models.thresholds import FILTER
+from pyod.models.ecod import ECOD
+from pyod.models.cof import COF
+from pyod.models.inne import INNE
+from pyod.models.lof import LOF
+from scipy.spatial import cKDTree
+
+from rissk.utils.stats_utils import (
+    calculate_entropy, 
+    calculate_list_entropy, 
+    filter_variables_by_magnitude, 
+    apply_benford_tests
+)
+from rissk.detection_algorithms_kedro import lat_lon_to_cartesian
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +27,14 @@ def rename_feature(feature_name: str, starting_string: str = 'f', new_string: st
         return feature_name.replace(starting_string, new_string)
     return feature_name
 
-def get_contamination_parameter(config_features: dict, feature_name: str, automatic_contamination: bool = False, method: str = 'medfilt', random_state: int = 42):
+def get_contamination_parameter(
+        config_features: dict, 
+        feature_name: str, 
+        automatic_contamination: bool = False, 
+        method: str = 'medfilt', 
+        random_state: int = 42
+        ):
     """Fetch contamination parameter from Kedro parameters/config features.
-    
     Returns a FILTER object for automatic contamination detection (matching legacy behaviour),
     or a fixed float when a contamination value is explicitly configured.
     """
@@ -27,95 +45,221 @@ def get_contamination_parameter(config_features: dict, feature_name: str, automa
     else:
         return float(contamination)
 
-def filter_variable_name_by_frequency(df: pd.DataFrame, feature_name: str, frequency: int = 100, min_unique_values: int = 3) -> List[str]:
+def filter_variable_name_by_frequency(
+        df: pd.DataFrame, 
+        feature_name: str, 
+        frequency: int = 100, 
+        min_unique_values: int = 3
+        ) -> List[str]:
     """Filter variables by frequency and unique values."""
     if feature_name not in df.columns:
         return []
+    # Count non-null frequency and unique values for each variable
     valid_data = df[~pd.isnull(df[feature_name])]
     grouped_df = valid_data.groupby('variable_name')[feature_name].agg(['count', 'nunique'])
     valid_variables = grouped_df[(grouped_df['count'] >= frequency) & (grouped_df['nunique'] >= min_unique_values)].index
+    # Return a list of unique variable names that meet the criteria
     return valid_variables.tolist()
 
-def filter_columns(data: pd.DataFrame, index_col: List[str], threshold: int = 100) -> Tuple[List[str], List[str]]:
-    """Determine columns to keep/drop based on threshold (placeholder refactor)"""
+def filter_columns(
+    data: pd.DataFrame,
+    index_col: List[str],
+    threshold: int = 100,
+    min_unique_values: int = 3,
+) -> Tuple[List[str], List[str]]:
+    """Determine columns to keep/drop based on threshold and minimum unique values.
+    Keeps a column only if both the non-null count is >= `threshold` and the
+    number of unique (non-null) values is >= `min_unique_values`.
+    """
+    # Prepare column set excluding index columns
+    data_cols = data.drop(columns=index_col, errors='ignore')
+
     # Count non-null values for each column
-    non_null_counts = data.drop(columns=index_col, errors='ignore').count()
-    # Filter columns to keep
-    keep_columns = non_null_counts[non_null_counts >= threshold].index.tolist()
-    drop_columns = non_null_counts[non_null_counts < threshold].index.tolist()
+    non_null_counts = data_cols.count()
+
+    # Count unique non-null values for each column
+    unique_counts = data_cols.nunique(dropna=True)
+
+    # Keep columns that meet both thresholds
+    keep_mask = (non_null_counts >= threshold) & (unique_counts >= min_unique_values)
+    keep_columns = non_null_counts[keep_mask].index.tolist()
+    drop_columns = non_null_counts[~keep_mask].index.tolist()
+
     return index_col + keep_columns, drop_columns
 
-def get_clean_pivot_table(df_item: pd.DataFrame, feature_name: str, remove_low_freq_col: bool = True, filter_conditions=None, threshold: int = 100) -> Tuple[pd.DataFrame, List[str]]:
+def get_clean_pivot_table(
+    df_item: pd.DataFrame,
+    feature_name: str,
+    remove_low_freq_col: bool = True,
+    filter_conditions=None,
+    threshold: int = 100,
+    min_unique_values: int = 3,
+) -> Tuple[pd.DataFrame, List[str]]:
     """Create a pivot table handling columns and filtering."""
     index_col = ['interview__id', 'roster_level', 'responsible']
     data = df_item.copy()
     
-    if filter_conditions is not None: # Not yet strictly typed since condition type unknown
-        pass # To fully mimic we'd apply filter
+    if filter_conditions is not None:
+        data = data.loc[filter_conditions]
         
     data = pd.pivot_table(data=data, index=index_col, columns='variable_name',
-                          values=feature_name, fill_value=np.NAN)
+                          values=feature_name, fill_value=np.nan)
     data = data.reset_index()
     
     if data.columns.nlevels > 1:
-        pass # In case of multi index columns flatten, handled differently?
+        data.columns = [f'{col[0]}_{col[1]}'.rstrip('_') for col in data.columns]
         
     index_col = [col for col in index_col if col in data.columns]
-    keep_columns, drop_columns = filter_columns(data, index_col, threshold=threshold)
+    keep_columns, drop_columns = filter_columns(
+        data, index_col, threshold=threshold, min_unique_values=min_unique_values
+    )
     
     if remove_low_freq_col:
-       data = data[keep_columns]
+       data = data[keep_columns].copy()
        
     return data, index_col
 
+
 # --- SCORING FUNCTIONS BEGIN --- 
-# (To be filled out next, mapping make_score__*)
 
-from pyod.models.ecod import ECOD
+def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+    df = df_item.copy()
+    score_cols = ['s__gps_proximity_counts', 's__gps_outlier', 's__gps_extreme_outlier']
+    required_columns = ['f__gps_latitude', 'f__gps_longitude', 'f__gps_accuracy']
+    index_col = ['interview__id', 'roster_level', 'responsible']
 
-def calculate_answer_hour_set_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
-    feature_name = 'f__answer_hour_set'
-    score_name = rename_feature(feature_name)
-    df = df_item[~pd.isnull(df_item[feature_name])].copy()
+    # If required GPS columns are missing, return original df
+    if any(col not in df.columns for col in required_columns):
+        return df
 
-    if df.empty:
-        df_item[score_name] = np.nan
-        return df_item
+    gps_mask = (~pd.isnull(df['f__gps_latitude'])) & (~pd.isnull(df['f__gps_longitude']))
+    if gps_mask.sum() == 0:
+        for col in score_cols:
+            df[col] = np.nan
+        return df
 
-    sorted_hours = df[feature_name].value_counts().index
-    hour_to_rank = {hour: rank for rank, hour in enumerate(sorted_hours)}
-    df['frequency'] = df[feature_name].map(hour_to_rank)
+    # Aggregate to one row per interview by averaging GPS columns across all GPS
+    # variable_names, matching the legacy pivot_table(aggfunc='mean') behaviour.
+    # When a questionnaire has multiple GPS questions this produces a mean
+    # coordinate; for single-GPS questionnaires the result is identical to the
+    # raw value. (This mirrors legacy pivot semantics where duplicates are
+    # collapsed by mean so spatial comparisons are one point per interview.)
+    data = (
+        df.loc[gps_mask, index_col + required_columns]
+        .groupby(index_col, as_index=False)[required_columns]
+        .mean()
+    )
 
-    contamination_param = parameters.get('features', {})
-    contamination = get_contamination_parameter(contamination_param, feature_name)
-    
-    model = ECOD(contamination=contamination)
-    model.fit(df[[feature_name]])
-    df[score_name] = model.predict(df[[feature_name]])
+    # Everything that has 0,0 as coordinates is considered an extreme outlier
+    # (devices sometimes report 0,0 when a fix failed); mark these explicitly
+    # so they can be excluded from median/distance calculations.
+    data['s__gps_extreme_outlier'] = 0
+    data.loc[data['f__gps_latitude'] == 0.0, 's__gps_extreme_outlier'] = 1
+    data.loc[data['f__gps_longitude'] == 0.0, 's__gps_extreme_outlier'] = 1
 
-    df.loc[df['frequency'] <= df[df[score_name] == 0]['frequency'].min(), score_name] = 0
-    df.drop(columns=['frequency'], inplace=True)
-    
-    # Merge back to original dataframe
-    df_out = df_item.copy()
-    df_out[score_name] = df_out.index.map(df[score_name])
-    return df_out
+    # Convert lat/lon into 3D Cartesian coordinates on a sphere (units = km).
+    # Using Cartesian coords lets KDTree operate in Euclidean space instead of
+    # running great-circle calculations for every pair.
+    data['x'], data['y'], data['z'] = lat_lon_to_cartesian(data['f__gps_latitude'], data['f__gps_longitude'])
+    # Accuracy is expected to accompany a GPS fix (Survey Solutions provides it).
+    # We convert `f__gps_accuracy` from metres → kilometres to match `lat_lon_to_cartesian`
+    # and use `fillna(0)` to avoid NaN radii. Revisit this behaviour because `query_ball_point` may
+    # return empty neighbor lists or raise when given NaN radii.
+  
+    data['accuracy'] = data['f__gps_accuracy'].fillna(0) / 1e3
+
+    # Build spatial index (KDTree) on 3D cartesian coords to count neighbours.
+    # Note: KDTree distances are Euclidean in the same units as x/y/z (km).
+    tree = cKDTree(data[['x', 'y', 'z']])
+    # Radius (search distance) passed to `query_ball_point` — same units as x/y/z (kilometres)
+    # Legacy code converted 10 metres into the same units; keep that behaviour.
+    radius = 10 / 1e3
+    counts = [
+        len(tree.query_ball_point(xyz, r=radius + acc)) - 1
+        for xyz, acc in zip(data[['x', 'y', 'z']].values, data['accuracy'])
+    ]
+    data['s__gps_proximity_counts'] = counts
+
+    # Exclude explicitly-marked extreme outliers (e.g., 0,0 fixes) from
+    # median/distance computations so they don't skew the central location.
+    mask = data['s__gps_extreme_outlier'] < 1
+    data['distance_to_median'] = np.nan
+    if mask.sum() > 0:
+        median_x = data.loc[mask].drop_duplicates(subset='x')['x'].median()
+        median_y = data.loc[mask].drop_duplicates(subset='y')['y'].median()
+        median_z = data.loc[mask].drop_duplicates(subset='z')['z'].median()
+
+        data.loc[mask, 'distance_to_median'] = np.sqrt(
+            (data.loc[mask, 'x'] - median_x) ** 2
+            + (data.loc[mask, 'y'] - median_y) ** 2
+            + (data.loc[mask, 'z'] - median_z) ** 2
+        )
+
+        # Set a threshold for extreme spatial outliers. Legacy code used a
+        # percentile + scaled IQR-like range; keep that heuristic here.
+        p75 = data.loc[mask, 'distance_to_median'].quantile(0.75)
+        median_dist = data.loc[mask, 'distance_to_median'].median()
+        range_75 = p75 - median_dist
+        threshold = p75 + 3.5 * range_75
+        data.loc[mask, 's__gps_extreme_outlier'] = (
+            data.loc[mask, 'distance_to_median'] > threshold
+        ).astype(int)
+
+        contamination = get_contamination_parameter(
+            parameters.get('features', {}),
+            'f__gps',
+            automatic_contamination=parameters.get('automatic_contamination', False),
+            method='medfilt',
+            random_state=42,
+        )
+        # We use only ['x', 'y'] to match legacy 2D behaviour for the COF/LOF
+        # model (a planar approximation). For larger geographic extents consider
+        # switching to ['x','y','z'] or a geodesic distance measure.
+        coords_columns = ['x', 'y']
+        
+        # USE COF if dataset has less than 10000 samples else use LOF
+        if data.loc[mask].shape[0] < 10000:
+            model = COF(contamination=contamination)
+        else:
+            model = LOF(contamination=contamination, n_neighbors=20)
+        model.fit(data.loc[mask, coords_columns])
+        data.loc[mask, 's__gps_outlier'] = model.predict(data.loc[mask, coords_columns])
+    else:
+        data['s__gps_outlier'] = 0
+
+    data['s__gps_outlier'] = data['s__gps_outlier'].fillna(0)
+
+    # Merge interview-level scores back to every row in the full long-format df.
+    # Rows for interviews that had no GPS answers are left as NaN — they are not
+    # scored, matching legacy behaviour where those interviews simply had no entry
+    # in the returned pivot output.
+    score_data = data[index_col + score_cols]
+    df = df.merge(score_data, on=index_col, how='left')
+
+    return df
+
 
 def calculate_sequence_jump_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
     feature_name = 'f__sequence_jump'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
 
-    if feature_name not in df.columns or df[feature_name].dropna().empty:
+    if feature_name not in df.columns:
+        return df
+    
+    if df[feature_name].dropna().empty:
         df[score_name] = np.nan
         return df
 
     valid_data = df[~pd.isnull(df[feature_name])].copy()
     valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=3)
-    df[score_name] = 0
-    contamination = get_contamination_parameter(parameters.get('features', {}), feature_name)
+    df[score_name] = np.nan
+    contamination = get_contamination_parameter(
+        parameters.get('features', {}),
+        feature_name,
+        automatic_contamination=parameters.get('automatic_contamination', False),
+    )
 
-    from pyod.models.inne import INNE
     for var in valid_variables:
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
         if mask.sum() > 0:
@@ -125,22 +269,29 @@ def calculate_sequence_jump_score(df_item: pd.DataFrame, parameters: Dict[str, A
 
     return df
 
-from pyod.models.cof import COF
 
 def calculate_first_decimal_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
     feature_name = 'f__first_decimal'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
-    
-    if feature_name not in df.columns or df[feature_name].dropna().empty:
+
+    if feature_name not in df.columns:
+        return df_item
+    if df[feature_name].dropna().empty:
         df[score_name] = np.nan
         return df
         
-    valid_data = df[~pd.isnull(df[feature_name])]
+    valid_data = df[~pd.isnull(df[feature_name])].copy()
+    # Select only those variables that have at least three distinct values and more than one hundred records
     valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=3)
     df[score_name] = np.nan
-    df.loc[~pd.isnull(df[feature_name]), score_name] = 0
-    contamination = get_contamination_parameter(parameters.get('features', {}), feature_name, method='medfilt', random_state=42)
+    contamination = get_contamination_parameter(
+        parameters.get('features', {}),
+        feature_name,
+        automatic_contamination=parameters.get('automatic_contamination', False),
+        method='medfilt',
+        random_state=42,
+    )
     
     for var in valid_variables:
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
@@ -151,20 +302,81 @@ def calculate_first_decimal_score(df_item: pd.DataFrame, parameters: Dict[str, A
             
     return df
 
+
+def calculate_answer_hour_set_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+    # Detect time set anomalies using ECOD algorithm.
+    # ECOD is a parameter-free, highly interpretable outlier detection algorithm based on empirical CDF functions
+    feature_name = 'f__answer_hour_set'
+    score_name = rename_feature(feature_name)
+    df_out = df_item.copy()
+
+    if feature_name not in df_out.columns:
+        return df_item
+
+    df_out[score_name] = np.nan
+    df_out[feature_name] = pd.to_numeric(df_out[feature_name], errors='coerce')
+
+    mask = ~pd.isnull(df_out[feature_name])
+    df = df_out[mask].copy()
+
+    if df.empty:
+        return df_out
+    # Sorting the DataFrame based on the 'frequency' answer_hour_set in descending order
+    sorted_hours = df[feature_name].value_counts().index
+    hour_to_rank = {hour: rank for rank, hour in enumerate(sorted_hours)}
+        # Create a frequency column
+    df['frequency'] = df[feature_name].map(hour_to_rank)
+
+    # IDENTIFY Outliers by ECOD anomaly detection model
+    contamination = get_contamination_parameter(
+        parameters.get('features', {}),
+        feature_name,
+        automatic_contamination=parameters.get('automatic_contamination', False),
+    )
+
+    model = ECOD(contamination=contamination)
+    model.fit(df[[feature_name]])
+    df[score_name] = model.predict(df[[feature_name]])
+    # In case has detected "high frequencies anomalies", set them to 0
+    df.loc[df['frequency'] <= df[df[score_name] == 0]['frequency'].min(), score_name] = 0
+
+
+    # # In case ECOD has flagged high-frequency hours as anomalies, revert them to 0.
+    # # Guard against the degenerate case where every row is an outlier (no inliers),
+    # # which would make df[df[score_name] == 0]['frequency'].min() return NaN and
+    # # silently skip the correction via NaN comparison.
+    # inlier_mask = df[score_name] == 0
+    # if inlier_mask.any():
+    #     min_inlier_rank = df.loc[inlier_mask, 'frequency'].min()
+    #     df.loc[df['frequency'] <= min_inlier_rank, score_name] = 0
+
+
+    # Assign scores back using index labels — safe regardless of index type or value
+    df_out.loc[df.index, score_name] = df[score_name].values
+    return df_out
+
+
 def calculate_answer_changed_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
     feature_name = 'f__answer_changed'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
-    
-    if feature_name not in df.columns or df[feature_name].dropna().empty:
+
+    if feature_name not in df.columns:
+        return df_item
+    if df[feature_name].dropna().empty:
         df[score_name] = np.nan
         return df
 
     valid_data = df[~pd.isnull(df[feature_name])]
     valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=1)
     df[score_name] = np.nan
-    df.loc[~pd.isnull(df[feature_name]), score_name] = 0
-    contamination = get_contamination_parameter(parameters.get('features', {}), feature_name, method='medfilt', random_state=42)
+    contamination = get_contamination_parameter(
+        parameters.get('features', {}),
+        feature_name,
+        automatic_contamination=parameters.get('automatic_contamination', False),
+        method='medfilt',
+        random_state=42,
+    )
     
     for var in valid_variables:
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
@@ -180,14 +392,21 @@ def calculate_answer_removed_score(df_item: pd.DataFrame, parameters: Dict[str, 
     score_name = rename_feature(feature_name)
     df = df_item.copy()
 
-    if feature_name not in df.columns or df[feature_name].dropna().empty:
+    if feature_name not in df.columns:
+        return df_item
+    if df[feature_name].dropna().empty:
         df[score_name] = np.nan
         return df
 
     valid_variables = filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=1)
     df[score_name] = np.nan
-    df.loc[~pd.isnull(df[feature_name]), score_name] = 0
-    contamination = get_contamination_parameter(parameters.get('features', {}), feature_name, method='medfilt', random_state=42)
+    contamination = get_contamination_parameter(
+        parameters.get('features', {}),
+        feature_name,
+        automatic_contamination=parameters.get('automatic_contamination', False),
+        method='medfilt',
+        random_state=42,
+    )
 
     for var in valid_variables:
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
@@ -198,37 +417,21 @@ def calculate_answer_removed_score(df_item: pd.DataFrame, parameters: Dict[str, 
 
     return df
 
-from scipy.spatial import cKDTree
-from pyod.models.lof import LOF
-
-# Attempting to import legacy stats_utils safely for the math functions
-try:
-    from rissk.utils.stats_utils import (
-        calculate_entropy, 
-        calculate_list_entropy, 
-        filter_variables_by_magnitude, 
-        apply_benford_tests
-    )
-except ImportError:
-    pass
-
-try:
-    from rissk.detection_algorithms_kedro import lat_lon_to_cartesian
-except ImportError:
-    pass
 
 def calculate_answer_position_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
     feature_name = 'f__answer_position'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
-    
-    if feature_name not in df.columns or df[feature_name].dropna().empty:
+
+    if feature_name not in df.columns:
+        return df_item
+    if df[feature_name].dropna().empty:
         df[score_name] = np.nan
         return df
 
     valid_data = df[~pd.isnull(df[feature_name])]
     valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=3)
-    df[score_name] = 0
+    df[score_name] = np.nan
     
     for var in valid_variables:
         mask = (df['variable_name'] == var)
@@ -258,8 +461,10 @@ def calculate_answer_selected_score(df_item: pd.DataFrame, parameters: Dict[str,
     feature_name = 'f__answer_selected'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
-    
-    if feature_name not in df.columns or df[feature_name].dropna().empty:
+
+    if feature_name not in df.columns:
+        return df_item
+    if df[feature_name].dropna().empty:
         df[score_name + '_lower'] = np.nan
         df[score_name + '_upper'] = np.nan
         return df
@@ -269,9 +474,15 @@ def calculate_answer_selected_score(df_item: pd.DataFrame, parameters: Dict[str,
     
     score_name1 = score_name + '_lower'
     score_name2 = score_name + '_upper'
-    df[score_name] = 0
+    df[score_name] = np.nan
     
-    contamination = get_contamination_parameter(parameters.get('features', {}), feature_name, method='medfilt', random_state=42)
+    contamination = get_contamination_parameter(
+        parameters.get('features', {}),
+        feature_name,
+        automatic_contamination=parameters.get('automatic_contamination', False),
+        method='medfilt',
+        random_state=42,
+    )
 
     for var in valid_variables:
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
@@ -299,8 +510,10 @@ def calculate_answer_duration_score(df_item: pd.DataFrame, parameters: Dict[str,
     feature_name = 'f__answer_duration'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
-    
-    if feature_name not in df.columns or df[feature_name].dropna().empty:
+
+    if feature_name not in df.columns:
+        return df_item
+    if df[feature_name].dropna().empty:
         df[score_name + '_lower'] = np.nan
         df[score_name + '_upper'] = np.nan
         return df
@@ -310,11 +523,17 @@ def calculate_answer_duration_score(df_item: pd.DataFrame, parameters: Dict[str,
 
     score_name1 = score_name + '_lower'
     score_name2 = score_name + '_upper'
-    df[score_name1] = 0
-    df[score_name2] = 0
-    df[score_name] = 0
+    df[score_name1] = np.nan
+    df[score_name2] = np.nan
+    df[score_name] = np.nan
     
-    contamination = get_contamination_parameter(parameters.get('features', {}), feature_name, method='medfilt', random_state=42)
+    contamination = get_contamination_parameter(
+        parameters.get('features', {}),
+        feature_name,
+        automatic_contamination=parameters.get('automatic_contamination', False),
+        method='medfilt',
+        random_state=42,
+    )
 
     for var in valid_variables:
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
@@ -343,8 +562,7 @@ def calculate_single_question_score(df_item: pd.DataFrame, parameters: Dict[str,
     df = df_item.copy()
     
     if 'qtype' not in df.columns or 'n_answers' not in df.columns or 'value' not in df.columns:
-        df[score_name] = np.nan
-        return df
+        return df_item
 
     # Mask specific for single questions without filter rules bypassing cascades
     single_question_mask = (
@@ -354,9 +572,10 @@ def calculate_single_question_score(df_item: pd.DataFrame, parameters: Dict[str,
         (pd.isnull(df.get('cascade_from_question_id', np.nan)))
     )
 
-    df[score_name] = 0
+    df[score_name] = np.nan
     valid_data = df[single_question_mask]
-    if valid_data.empty: return df
+    if valid_data.empty:
+        return df
     
     variables = filter_variable_name_by_frequency(valid_data, 'value', frequency=100, min_unique_values=3)
     
@@ -390,14 +609,14 @@ def calculate_multi_option_question_score(df_item: pd.DataFrame, parameters: Dic
     df = df_item.copy()
     
     if 'qtype' not in df.columns or 'value' not in df.columns:
-        df[score_name] = np.nan
-        return df
+        return df_item
 
     multi_question_mask = (df["qtype"] == 'MultyOptionsQuestion')
     valid_data = df[multi_question_mask]
-    
-    df[score_name] = 0
-    if valid_data.empty: return df
+
+    df[score_name] = np.nan
+    if valid_data.empty:
+        return df
     
     # Filter variables safely via counts
     val_counts = valid_data['variable_name'].value_counts()
@@ -433,14 +652,16 @@ def calculate_first_digit_score(df_item: pd.DataFrame, parameters: Dict[str, Any
     feature_name = 'f__numeric_response'
     score_name = 's__first_digit'
     df = df_item.copy()
-    
-    if feature_name not in df.columns or df[feature_name].dropna().empty:
+
+    if feature_name not in df.columns:
+        return df_item
+    if df[feature_name].dropna().empty:
         df[score_name] = np.nan
         return df
 
     valid_data = df[~pd.isnull(df[feature_name])]
     valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=3)
-    df[score_name] = 0
+    df[score_name] = np.nan
     
     try:
         valid_variables = filter_variables_by_magnitude(valid_data, feature_name, valid_variables, min_order_of_magnitude=3)
@@ -465,84 +686,5 @@ def calculate_first_digit_score(df_item: pd.DataFrame, parameters: Dict[str, Any
                 responsible_map = bj_df.set_index('responsible')[score_name].to_dict()
                 df.loc[mask, score_name] = df.loc[mask, 'responsible'].map(responsible_map).fillna(0)
                 
-    return df
-
-def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
-    df = df_item.copy()
-
-    required_columns = ['f__gps_latitude', 'f__gps_longitude', 'f__gps_accuracy']
-    if any(col not in df.columns for col in required_columns):
-        for col in ['s__gps_proximity_counts', 's__gps_outlier', 's__gps_extreme_outlier']:
-            df[col] = np.nan
-        return df
-
-    gps_mask = (~pd.isnull(df['f__gps_latitude'])) & (~pd.isnull(df['f__gps_longitude']))
-    if gps_mask.sum() == 0:
-        for col in ['s__gps_proximity_counts', 's__gps_outlier', 's__gps_extreme_outlier']:
-            df[col] = np.nan
-        return df
-
-    data = df.loc[gps_mask].copy()
-    data['s__gps_extreme_outlier'] = 0
-    data.loc[data['f__gps_latitude'] == 0.0, 's__gps_extreme_outlier'] = 1
-    data.loc[data['f__gps_longitude'] == 0.0, 's__gps_extreme_outlier'] = 1
-
-    data['x'], data['y'], data['z'] = lat_lon_to_cartesian(data['f__gps_latitude'], data['f__gps_longitude'])
-    data['accuracy'] = data['f__gps_accuracy'].fillna(0) / 1e6
-
-    tree = cKDTree(data[['x', 'y', 'z']])
-    radius = 10 / 1e6
-    counts = [
-        len(tree.query_ball_point(xyz, r=radius + acc)) - 1
-        for xyz, acc in zip(data[['x', 'y', 'z']].values, data['accuracy'])
-    ]
-    data['s__gps_proximity_counts'] = counts
-
-    mask = data['s__gps_extreme_outlier'] < 1
-    data['distance_to_median'] = np.nan
-    if mask.sum() > 0:
-        median_x = data.loc[mask].drop_duplicates(subset='x')['x'].median()
-        median_y = data.loc[mask].drop_duplicates(subset='y')['y'].median()
-        median_z = data.loc[mask].drop_duplicates(subset='z')['z'].median()
-
-        data.loc[mask, 'distance_to_median'] = np.sqrt(
-            (data.loc[mask, 'x'] - median_x) ** 2
-            + (data.loc[mask, 'y'] - median_y) ** 2
-            + (data.loc[mask, 'z'] - median_z) ** 2
-        )
-
-        p75 = data.loc[mask, 'distance_to_median'].quantile(0.75)
-        median = data.loc[mask, 'distance_to_median'].median()
-        range_75 = p75 - median
-        threshold = p75 + 3.5 * range_75
-        data.loc[mask, 's__gps_extreme_outlier'] = (
-            data.loc[mask, 'distance_to_median'] > threshold
-        ).astype(int)
-
-        contamination = get_contamination_parameter(
-            parameters.get('features', {}),
-            'f__gps',
-            method='medfilt',
-            random_state=42,
-        )
-        coords_columns = ['x', 'y']
-        if data.loc[mask].shape[0] < 10000:
-            model = COF(contamination=contamination)
-        else:
-            model = LOF(contamination=contamination, n_neighbors=20)
-        model.fit(data.loc[mask, coords_columns])
-        data.loc[mask, 's__gps_outlier'] = model.predict(data.loc[mask, coords_columns])
-    else:
-        data['s__gps_outlier'] = 0
-
-    data['s__gps_outlier'] = data['s__gps_outlier'].fillna(0)
-    df.loc[data.index, 's__gps_proximity_counts'] = data['s__gps_proximity_counts']
-    df.loc[data.index, 's__gps_outlier'] = data['s__gps_outlier']
-    df.loc[data.index, 's__gps_extreme_outlier'] = data['s__gps_extreme_outlier']
-
-    for col in ['s__gps_proximity_counts', 's__gps_outlier', 's__gps_extreme_outlier']:
-        if col in df.columns:
-            df[col] = df[col].fillna(0)
-
     return df
 
