@@ -30,6 +30,8 @@ raw_microdata:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/microdata.parquet
 
+# === FEATURE ENGINEERING DataFrames ===
+
 paradata_processed:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/paradata_processed.parquet
@@ -38,14 +40,6 @@ paradata_active:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/paradata_active.parquet
 
-# === FEATURE CREATION DataFrames ===
-item_features_base:
-  type: pandas.ParquetDataset
-  filepath: data/${globals:survey.name}/latest/20_INTERIM/item_features_base.parquet
-
-unit_features_base:
-  type: pandas.ParquetDataset
-  filepath: data/${globals:survey.name}/latest/20_INTERIM/unit_features_base.parquet
 
 # === LEGACY DATA FOR PIPELINE TESTING ===
 # Uncomment these and update pipeline.py inputs to test against legacy-produced data.
@@ -65,7 +59,17 @@ legacy_paradata_active:
   type: pandas.ParquetDataset
   filepath: /Users/vanessa/Work/Rowsquared/RISSK/rissk/data/${globals:survey.name}/latest/30_PROCESSED/paradata_active.parquet
 
-# Final Feature Tables (Input to Risk Scoring)
+
+# === FEATURE CREATION DataFrames ===
+item_features_base:
+  type: pandas.ParquetDataset
+  filepath: data/${globals:survey.name}/latest/20_INTERIM/item_features_base.parquet
+
+unit_features_base:
+  type: pandas.ParquetDataset
+  filepath: data/${globals:survey.name}/latest/20_INTERIM/unit_features_base.parquet
+
+  # Final Feature Tables (Input to Risk Scoring)
 item_features:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/item_features.parquet
@@ -73,10 +77,7 @@ item_features:
 unit_features:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/unit_features.parquet
-# === PRE-SCORING DataFrames ===
-item_features_removed:
-  type: pandas.ParquetDataset
-  filepath: data/${globals:survey.name}/latest/20_INTERIM/item_features_removed.parquet
+
 
 # === SCORING DataFrames ===
 item_scores:
@@ -84,9 +85,9 @@ item_scores:
   filepath: data/${globals:survey.name}/latest/40_SCORED/item_scores.parquet
 
 unit_risk_scores:
-  type: pandas.ParquetDataset
-  filepath: data/${globals:survey.name}/latest/40_SCORED/unit_risk_scores.parquet
+  type: pandas.CSVDataset
+  filepath: data/${globals:survey.name}/latest/40_SCORED/unit_risk_scores.csv
 
 responsible_scores:
-  type: pandas.ParquetDataset
-  filepath: data/${globals:survey.name}/latest/40_SCORED/responsible_scores.parquet
+  type: pandas.CSVDataset
+  filepath: data/${globals:survey.name}/latest/40_SCORED/responsible_scores.csv
