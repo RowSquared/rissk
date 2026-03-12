@@ -7,7 +7,10 @@ from rissk.item_processing_kedro import (
     calculate_sequence_jump_score,
     calculate_first_decimal_score,
     calculate_answer_changed_score,
-    calculate_answer_removed_score,
+    # calculate_answer_removed_score is intentionally absent: s__answer_removed is
+    # computed at unit level from paradata_full by calculate_answer_removed_unit_score
+    # so that AnswerRemoved events for items deleted from microdata are not missed.
+    calculate_answer_removed_unit_score,
     calculate_answer_position_score,
     calculate_answer_selected_score,
     calculate_answer_duration_score,
@@ -37,7 +40,8 @@ def calculate_item_scores(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> 
     df_scored = calculate_sequence_jump_score(df_scored, parameters)
     df_scored = calculate_first_decimal_score(df_scored, parameters)
     df_scored = calculate_answer_changed_score(df_scored, parameters)
-    df_scored = calculate_answer_removed_score(df_scored, parameters)
+    # s__answer_removed is not computed here — see calculate_answer_removed_unit_score
+    # in calculate_unit_scores, which scores from paradata_full to match legacy coverage.
     df_scored = calculate_answer_position_score(df_scored, parameters)
     df_scored = calculate_answer_selected_score(df_scored, parameters)
     df_scored = calculate_answer_duration_score(df_scored, parameters)
@@ -47,16 +51,37 @@ def calculate_item_scores(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> 
     df_scored = calculate_gps_score(df_scored, parameters)
     return df_scored
 
-def calculate_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.DataFrame, parameters: Dict[str, Any]) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def calculate_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.DataFrame, parameters: Dict[str, Any], paradata_full: pd.DataFrame = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Aggregate item scores to unit, extract responsible scores, and calculate global risk.
+
+    paradata_full is the full processed paradata stream (role=1, interviewing=True).
+    It is used to compute s__answer_removed at unit level directly from paradata,
+    matching legacy behaviour where items deleted from microdata are still counted.
     """
     logger.info("Calculating Unit Scores and Global Risk...")
     
-    # 1. Aggregate item-level scores up to unit level
+    # 1. Aggregate item-level scores up to unit level.
+    # s__answer_removed is excluded from this aggregation (see aggregate_item_to_unit_scores);
+    # it is handled below using paradata_full to match legacy coverage.
     df_unit_scored = aggregate_item_to_unit_scores(df_unit, df_item_scores)
+
+    # 2a. Score answer_removed at unit level from paradata_full.
+    # This replicates legacy make_score_unit__answer_removed which read from df_paradata
+    # directly and therefore included AnswerRemoved events for items later deleted from
+    # microdata. Falling back to the df_item-based mean when paradata_full is unavailable.
+    if paradata_full is not None and not paradata_full.empty:
+        unit_removed = calculate_answer_removed_unit_score(paradata_full, parameters)
+        df_unit_scored['s__answer_removed'] = df_unit_scored['interview__id'].map(unit_removed).fillna(0)
+    elif 's__answer_removed' in df_item_scores.columns:
+        logger.warning(
+            "paradata_full not available; falling back to df_item-based s__answer_removed "
+            "aggregation (may undercount removals for deleted items)."
+        )
+        data = df_item_scores.groupby('interview__id')['s__answer_removed'].mean()
+        df_unit_scored['s__answer_removed'] = df_unit_scored['interview__id'].map(data).fillna(0)
     
-    # 2. Add pure unit-level calculations
+    # 2b. Add pure unit-level calculations
     df_unit_scored = calculate_unit_level_scores(df_unit_scored, parameters)
 
     # 3. Aggregate item-level scores up to responsible level

@@ -444,7 +444,7 @@ def feat_answer_removed(df_item, **kwargs):
     # f__answer_removed, answers removed (by interviewer, or by system as a result of interviewer action).
     # Matches legacy get_feature_item__answer_removed which uses self.df_paradata, but it appends the 
     # feature to the item table instead of returning a separate dataframe. 
-    # (all events, role=1, interviewing=True — not limited to active events).
+    # (all events, role=1, interviewing=True).
     # The legacy method notes this feature may include items no longer in microdata.
     feature_name = 'f__answer_removed'
     paradata_full = kwargs.get('paradata_full')

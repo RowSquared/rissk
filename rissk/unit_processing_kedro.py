@@ -91,8 +91,11 @@ def aggregate_item_to_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.Data
     df_out = df_unit.copy()
     
     # 1. Simple mean aggregations
+    # Note: s__answer_removed is intentionally excluded here — it is scored
+    # at unit level directly from paradata_full by calculate_answer_removed_unit_score
+    # in calculate_unit_scores, so that items deleted from microdata are included.
     mean_scores = [
-        's__answer_hour_set', 's__answer_removed', 's__answer_changed',
+        's__answer_hour_set', 's__answer_changed',
         's__first_decimal', 's__sequence_jump'
     ]
     for score in mean_scores:

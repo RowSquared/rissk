@@ -17,7 +17,11 @@ def create_pipeline(**kwargs) -> Pipeline:
         ),
         node(
             func=calculate_unit_scores,
-            inputs=["unit_features", "item_scores", "parameters"],
+            # paradata_full (4th arg) gives calculate_unit_scores access to ALL
+            # AnswerRemoved events, including those for items deleted from microdata,
+            # matching legacy make_score_unit__answer_removed behaviour.
+            # Real pipeline: replace "legacy_paradata_processed" with "paradata_processed".
+            inputs=["unit_features", "item_scores", "parameters", "legacy_paradata_processed"],
             outputs=["unit_risk_scores", "responsible_scores"],
             name="calculate_unit_scores_node",
         ),

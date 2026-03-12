@@ -9,10 +9,10 @@ from pyod.models.inne import INNE
 from pyod.models.lof import LOF
 from scipy.spatial import cKDTree
 
-from rissk.utils.stats_utils import (
-    calculate_entropy, 
-    calculate_list_entropy, 
-    filter_variables_by_magnitude, 
+from rissk.utils.stats_utils_kedro import (
+    calculate_entropy,
+    calculate_list_entropy,
+    filter_variables_by_magnitude,
     apply_benford_tests
 )
 from rissk.detection_algorithms_kedro import lat_lon_to_cartesian
@@ -276,7 +276,7 @@ def calculate_first_decimal_score(df_item: pd.DataFrame, parameters: Dict[str, A
     df = df_item.copy()
 
     if feature_name not in df.columns:
-        return df_item
+        return df
     if df[feature_name].dropna().empty:
         df[score_name] = np.nan
         return df
@@ -311,7 +311,7 @@ def calculate_answer_hour_set_score(df_item: pd.DataFrame, parameters: Dict[str,
     df_out = df_item.copy()
 
     if feature_name not in df_out.columns:
-        return df_item
+        return df_out
 
     df_out[score_name] = np.nan
     df_out[feature_name] = pd.to_numeric(df_out[feature_name], errors='coerce')
@@ -362,12 +362,13 @@ def calculate_answer_changed_score(df_item: pd.DataFrame, parameters: Dict[str, 
     df = df_item.copy()
 
     if feature_name not in df.columns:
-        return df_item
+        return df
     if df[feature_name].dropna().empty:
         df[score_name] = np.nan
         return df
 
     valid_data = df[~pd.isnull(df[feature_name])]
+    # Select only those variables that have at least 1 distinct values and more than one hundred records
     valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=1)
     df[score_name] = np.nan
     contamination = get_contamination_parameter(
@@ -387,19 +388,63 @@ def calculate_answer_changed_score(df_item: pd.DataFrame, parameters: Dict[str, 
             
     return df
 
-def calculate_answer_removed_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+# NOTE: s__answer_removed is NOT computed at item level.
+#
+# Legacy `make_score__answer_removed` operated on a frame derived directly from
+# df_paradata (via get_feature_item__answer_removed), which includes AnswerRemoved
+# events for items that were subsequently deleted from microdata and are therefore
+# absent from df_item. In the Kedro pipeline, df_item is built from microdata and
+# f__answer_removed is merged back with how='left' — so those deleted items are
+# silently dropped, making an item-level s__answer_removed on df_item structurally
+# incomplete and potentially misleading.
+#
+# The authoritative score is computed at UNIT level from paradata_full directly by
+# calculate_answer_removed_unit_score below, matching legacy coverage exactly.
+
+
+def calculate_answer_removed_unit_score(
+    paradata_full: pd.DataFrame,
+    parameters: Dict[str, Any],
+) -> pd.Series:
+    """Score answer-removal anomalies from paradata_full directly, matching legacy
+    make_score_unit__answer_removed which operated on self.df_paradata (NOT df_item).
+
+    Items deleted from microdata — whose AnswerRemoved events are absent from df_item
+    because of the how='left' merge in feat_answer_removed — are included here,
+    eliminating the undercount introduced by the Kedro item-table path.
+
+    Returns a Series indexed by interview__id → mean s__answer_removed score,
+    ready to be mapped directly into df_unit.
+    """
     feature_name = 'f__answer_removed'
     score_name = rename_feature(feature_name)
-    df = df_item.copy()
 
-    if feature_name not in df.columns:
-        return df_item
-    if df[feature_name].dropna().empty:
-        df[score_name] = np.nan
-        return df
+    required_cols = ['event', 'role', 'order', 'interview__id', 'variable_name']
+    if any(c not in paradata_full.columns for c in required_cols):
+        logger.warning(
+            "calculate_answer_removed_unit_score: paradata_full is missing one or more "
+            "required columns %s; returning empty Series.", required_cols
+        )
+        return pd.Series(dtype=float)
+
+    # Replicate legacy get_feature_item__answer_removed exactly.
+    removed_mask = (paradata_full['event'] == 'AnswerRemoved') & (paradata_full['role'] == 1)
+    df_removed = paradata_full[removed_mask]
+
+    if df_removed.empty:
+        return pd.Series(dtype=float)
+
+    # Match legacy groupby grain: (interview__id, responsible, variable_name, qnr_seq).
+    # qnr_seq may be absent in some paradata versions; fall back gracefully.
+    group_cols = [c for c in ['interview__id', 'responsible', 'variable_name', 'qnr_seq']
+                  if c in df_removed.columns]
+    df = df_removed.groupby(group_cols).agg(
+        f__answer_removed=('order', 'count')
+    ).reset_index()
 
     valid_variables = filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=1)
-    df[score_name] = np.nan
+
+    df[score_name] = 0
     contamination = get_contamination_parameter(
         parameters.get('features', {}),
         feature_name,
@@ -415,35 +460,31 @@ def calculate_answer_removed_score(df_item: pd.DataFrame, parameters: Dict[str, 
             model.fit(df.loc[mask, [feature_name]])
             df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
 
-    return df
+    # Aggregate to interview__id level matching legacy make_score_unit__answer_removed.
+    return df.groupby('interview__id')[score_name].mean()
 
 
-def calculate_answer_position_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+def calculate_answer_position_score(df_item: pd.DataFrame) -> pd.DataFrame:
     feature_name = 'f__answer_position'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
 
     if feature_name not in df.columns:
-        return df_item
+        return df
     if df[feature_name].dropna().empty:
         df[score_name] = np.nan
         return df
 
-    valid_data = df[~pd.isnull(df[feature_name])]
-    valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=3)
+    valid_variables = filter_variable_name_by_frequency(df[~pd.isnull(df[feature_name])], feature_name, frequency=100, min_unique_values=3)
     df[score_name] = np.nan
     
     for var in valid_variables:
-        mask = (df['variable_name'] == var)
+        mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
         if mask.sum() > 0:
             unique_values = df[mask][feature_name].nunique()
-            try:
-                entropy_df = df[mask].groupby('responsible')[feature_name].apply(
-                    calculate_entropy, unique_values=unique_values, min_record_sample=10
-                ).reset_index()
-            except NameError:
-                continue # if calculate_entropy not found
-
+            entropy_df = df[mask].groupby('responsible')[feature_name].apply(
+                calculate_entropy, unique_values=unique_values, min_record_sample=10
+            ).reset_index()
             entropy_df = entropy_df[~pd.isnull(entropy_df[feature_name])]
 
             if entropy_df.shape[0] > 0:
@@ -454,7 +495,7 @@ def calculate_answer_position_score(df_item: pd.DataFrame, parameters: Dict[str,
                 
                 # Apply map safely
                 responsible_map = entropy_df.set_index('responsible')[score_name].to_dict()
-                df.loc[mask, score_name] = df.loc[mask, 'responsible'].map(responsible_map).fillna(0)
+                df.loc[mask, score_name] = df.loc[mask, 'responsible'].map(responsible_map)
     return df
 
 def calculate_answer_selected_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
@@ -463,7 +504,7 @@ def calculate_answer_selected_score(df_item: pd.DataFrame, parameters: Dict[str,
     df = df_item.copy()
 
     if feature_name not in df.columns:
-        return df_item
+        return df
     if df[feature_name].dropna().empty:
         df[score_name + '_lower'] = np.nan
         df[score_name + '_upper'] = np.nan
@@ -512,7 +553,7 @@ def calculate_answer_duration_score(df_item: pd.DataFrame, parameters: Dict[str,
     df = df_item.copy()
 
     if feature_name not in df.columns:
-        return df_item
+        return df
     if df[feature_name].dropna().empty:
         df[score_name + '_lower'] = np.nan
         df[score_name + '_upper'] = np.nan
@@ -562,7 +603,7 @@ def calculate_single_question_score(df_item: pd.DataFrame, parameters: Dict[str,
     df = df_item.copy()
     
     if 'qtype' not in df.columns or 'n_answers' not in df.columns or 'value' not in df.columns:
-        return df_item
+        return df
 
     # Mask specific for single questions without filter rules bypassing cascades
     single_question_mask = (
@@ -609,7 +650,7 @@ def calculate_multi_option_question_score(df_item: pd.DataFrame, parameters: Dic
     df = df_item.copy()
     
     if 'qtype' not in df.columns or 'value' not in df.columns:
-        return df_item
+        return df
 
     multi_question_mask = (df["qtype"] == 'MultyOptionsQuestion')
     valid_data = df[multi_question_mask]
@@ -654,7 +695,7 @@ def calculate_first_digit_score(df_item: pd.DataFrame, parameters: Dict[str, Any
     df = df_item.copy()
 
     if feature_name not in df.columns:
-        return df_item
+        return df
     if df[feature_name].dropna().empty:
         df[score_name] = np.nan
         return df
