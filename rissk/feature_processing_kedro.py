@@ -59,8 +59,28 @@ def _coerce_numeric_with_warning(df_item: pd.DataFrame, numeric_mask: pd.Series,
     return coerced
 
 def get_df_time(df_paradata_full: pd.DataFrame) -> pd.DataFrame:
-    """Calculates time differences and durations from paradata."""
-    df_time = df_paradata_full.copy()
+    """Calculates time differences and durations from paradata.
+
+    Mirrors the legacy df_active_paradata filter before computing time deltas:
+    - AnswerSet / AnswerRemoved / CommentSet: included only when question_scope == 0
+      (interviewer-scope questions; supervisor-scope questions with scope == 1 are excluded).
+    - InterviewCreated / Resumed / Restarted: no question scope (NaN); included regardless.
+    - All other event types (Completed, ApprovalRequested, etc.): excluded.
+
+    Computing .diff() on the full paradata would fragment time gaps with irrelevant events,
+    producing shorter (and wrong) durations for the active events that follow them.
+    """
+    # Events that carry a question scope — keep only interviewer-scope (== 0).
+    # NaN scope (supervisor-originated or no-question events) is intentionally excluded here.
+    question_scope_events = ['AnswerSet', 'AnswerRemoved', 'CommentSet']
+    # Events that have no question scope (pause / session events); always include.
+    no_scope_events = ['InterviewCreated', 'Resumed', 'Restarted']
+
+    active_mask = (
+        (df_paradata_full['event'].isin(no_scope_events)) |
+        (df_paradata_full['event'].isin(question_scope_events) & (df_paradata_full['question_scope'] == 0))
+    )
+    df_time = df_paradata_full[active_mask].copy()
 
     # calculate time difference in seconds
     df_time['time_difference'] = df_time.groupby('interview__id')['timestamp_local'].diff()
@@ -260,21 +280,18 @@ def create_base_item_table(microdata: pd.DataFrame, paradata_full: pd.DataFrame,
     paradata_columns = ['responsible', 'f__answer_hour_set', 'interviewing', 'tz_offset']
     # available_para_cols = [c for c in paradata_columns if c in paradata_full.columns]
     
-    # The filter paradata_full['role'] == 1 is already applied in the paradata processing node,
-    # so all events in paradata_full should be from the interviewer.
-    paradata_full['question_scope'] = paradata_full['question_scope'].fillna('')
-    question_scope_mask = paradata_full['question_scope'].isin([0, ''])
-    answer_set_mask = (paradata_full['event'] == 'AnswerSet')
-    active_events_mask = [
-    'InterviewCreated', 'AnswerSet', 'AnswerRemoved', 'CommentSet', 
-    'Restarted', 'Resumed' # pause events, which have empty question scope
-    ]
-        
+    # Interviewer-scope AnswerSet events: scope==0 means interviewer, scope==1 means supervisor.
+    # Pause events (Resumed/Restarted) have NaN scope; no fillna needed — they are not AnswerSet events.
+    interviewer_answer_mask = (
+        (paradata_full['event'] == 'AnswerSet') &
+        (paradata_full['question_scope'] == 0)
+    )
+
     data_to_merge = (
-        paradata_full[answer_set_mask & question_scope_mask]
-        .dropna(subset=['index_col']) # drop rows without index_col
+        paradata_full[interviewer_answer_mask]
+        .dropna(subset=['index_col'])             # drop rows without index_col
         # keep the last AnswerSet per item, paradata is already sorted by interview__id and order in the processing node
-        .drop_duplicates(subset='index_col', keep='last') 
+        .drop_duplicates(subset='index_col', keep='last')
         [['index_col'] + paradata_columns]    # select only necessary columns for merging
     )
 
@@ -287,12 +304,14 @@ def create_base_item_table(microdata: pd.DataFrame, paradata_full: pd.DataFrame,
 
     # 6. Add Sequence Features
     if calculate_sequence:
-        df_sequence = get_df_sequence(paradata_full[answer_set_mask & question_scope_mask])
+        df_sequence = get_df_sequence(paradata_full[interviewer_answer_mask])
         df_item = add_sequence_features(df_item, df_sequence, allowed_features)
 
     # 7. Add Time Features
     if calculate_time:
-        df_time = get_df_time(paradata_full[active_events_mask & question_scope_mask])
+        # Pass full paradata; get_df_time filters by event type internally.
+        # This correctly includes pause events (Resumed/Restarted) which have NaN question_scope.
+        df_time = get_df_time(paradata_full)
         df_item = add_item_time_features(df_item, df_time, allowed_features, item_level_columns)
 
     return df_item
@@ -308,30 +327,28 @@ def create_base_unit_table(paradata_full: pd.DataFrame, parameters: dict) -> pd.
     # 1. Initialize from paradata
     columns = ['interview__id', 'responsible', 'qnr', 'qnr_version']
     
-    # The filter paradata_full['role'] == 1 is already applied in the paradata processing node,
-    # so all events in paradata_full should be from the interviewer.
-    paradata_full['question_scope'] = paradata_full['question_scope'].fillna('')
-    question_scope_mask = paradata_full['question_scope'].isin([0, ''])
-    active_events_mask = [
-    'InterviewCreated', 'AnswerSet', 'AnswerRemoved', 'CommentSet', 
-    'Restarted', 'Resumed' # pause events, which have empty question scope
-    ]
-    paradata_active = paradata_full[active_events_mask & question_scope_mask].copy()
+    # Use interviewer-scope AnswerSet events to seed unit identity rows.
+    # responsible is only reliably populated on AnswerSet events.
+    interviewer_answer_mask = (
+        (paradata_full['event'] == 'AnswerSet') &
+        (paradata_full['question_scope'] == 0)
+    )
 
-
-    df_unit = paradata_active[columns].copy()
+    df_unit = paradata_full[interviewer_answer_mask][columns].copy()
     df_unit.drop_duplicates(inplace=True)
-    
+
     # Filter valid responsible
     df_unit = df_unit[(df_unit['responsible'] != '') & (df_unit['responsible'].notna())]
-    
+
     pause_features = ['f__pause_count', 'f__pause_duration', 'f__pause_list']
     unit_time_features = ['f__total_duration', 'f__total_elapse', 'f__days_from_start', 'f__time_changed']
     calculate_pause = any(f in allowed_features for f in pause_features)
     calculate_unit_time = any(f in allowed_features for f in unit_time_features)
 
     if calculate_pause or calculate_unit_time:
-        df_time = get_df_time(paradata_active)
+        # Pass full paradata so get_df_time correctly includes pause events (Resumed/Restarted)
+        # which have NaN question_scope and would be dropped by any scope filter.
+        df_time = get_df_time(paradata_full)
         if calculate_pause:
             df_unit = add_pause_features(df_unit, df_time, allowed_features)
         if calculate_unit_time:
@@ -505,7 +522,7 @@ def feat_answer_changed(df_item, **kwargs):
         return df_item
 
     item_level_columns = ['interview__id', 'variable_name', 'roster_level']
-    df_changed = paradata_full[(paradata_full['event'] == 'AnswerSet') & (paradata_full['question_scope'].isin([0]))].copy()
+    df_changed = paradata_full[(paradata_full['event'] == 'AnswerSet') & (paradata_full['question_scope'] == 0)].copy()
 
     df_changed[feature_name] = False
     group_cols = [c for c in item_level_columns + ['index_col'] if c in df_changed.columns]
@@ -677,7 +694,8 @@ ITEM_FEATURE_MAP = {
     'answer_position': feat_answer_position,
     'answer_changed': feat_answer_changed,
     'answer_selected': feat_answer_selected,
-    'answer_removed': feat_answer_removed,
+    # answer_removed is handled as a separate pipeline node outputting removed_answers parquet;
+    # it is NOT enriched into df_item here.
     'comment_length': feat_comment_length,
     'comment_set': feat_comment_set,
     'gps': feat_gps,

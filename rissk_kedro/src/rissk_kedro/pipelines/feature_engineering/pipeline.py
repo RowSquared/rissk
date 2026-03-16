@@ -2,7 +2,6 @@
 from kedro.pipeline import Pipeline, node, pipeline
 from .nodes import (
     process_paradata_node,
-    filter_active_paradata_node,
 )
 
 
@@ -19,11 +18,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             outputs="paradata_processed",
             name="process_paradata_node",
         ),
-        # This node is redundant and the filters will be moved to feature creation nodes
-        node(
-            func=filter_active_paradata_node,
-            inputs=["paradata_processed", "parameters"],
-            outputs="paradata_active",
-            name="filter_active_paradata_node",
-        ),
+        # filter_active_paradata_node removed: each feature function now applies
+        # its own question_scope == 0 filter inline where needed. Pause events
+        # (Resumed, Restarted) have NaN question_scope and must not be dropped globally.
     ])

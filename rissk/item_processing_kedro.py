@@ -471,7 +471,53 @@ def calculate_answer_removed_unit_score(
     return df.groupby('interview__id')[score_name].mean()
 
 
-def calculate_answer_position_score(df_item: pd.DataFrame) -> pd.DataFrame:
+def calculate_answer_removed_score_from_df(
+    removed_answers: pd.DataFrame,
+    parameters: Dict[str, Any],
+) -> pd.Series:
+    """Score answer-removal anomalies from the pre-aggregated removed_answers DataFrame.
+
+    Takes the output of feat_answer_removed (columns: interview__id, responsible,
+    variable_name, qnr_seq, f__answer_removed) and applies the same ECOD scoring
+    logic as calculate_answer_removed_unit_score, without re-filtering paradata.
+
+    Returns a Series indexed by interview__id → mean s__answer_removed score.
+    """
+    feature_name = 'f__answer_removed'
+    score_name = rename_feature(feature_name)
+
+    if removed_answers is None or removed_answers.empty:
+        return pd.Series(dtype=float)
+
+    required_cols = ['interview__id', 'variable_name', feature_name]
+    if any(c not in removed_answers.columns for c in required_cols):
+        logger.warning(
+            "calculate_answer_removed_score_from_df: removed_answers is missing one or more "
+            "required columns %s; returning empty Series.", required_cols
+        )
+        return pd.Series(dtype=float)
+
+    df = removed_answers.copy()
+
+    valid_variables = filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=1)
+
+    df[score_name] = np.nan
+    contamination = get_contamination_parameter(
+        parameters.get('features', {}),
+        feature_name,
+        automatic_contamination=parameters.get('automatic_contamination', False),
+        method='medfilt',
+        random_state=42,
+    )
+
+    for var in valid_variables:
+        mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
+        if mask.sum() > 0:
+            model = ECOD(contamination=contamination)
+            model.fit(df.loc[mask, [feature_name]])
+            df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+
+    return df.groupby('interview__id')[score_name].mean()
     feature_name = 'f__answer_position'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
