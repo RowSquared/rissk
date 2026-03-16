@@ -58,9 +58,9 @@ def _coerce_numeric_with_warning(df_item: pd.DataFrame, numeric_mask: pd.Series,
 
     return coerced
 
-def get_df_time(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
+def get_df_time(df_paradata_full: pd.DataFrame) -> pd.DataFrame:
     """Calculates time differences and durations from paradata."""
-    df_time = df_active_paradata.copy()
+    df_time = df_paradata_full.copy()
 
     # calculate time difference in seconds
     df_time['time_difference'] = df_time.groupby('interview__id')['timestamp_local'].diff()
@@ -99,11 +99,11 @@ def get_df_time(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
 
     return df_time
 
-def get_df_sequence(df_active_paradata: pd.DataFrame) -> pd.DataFrame:
+def get_df_sequence(df_paradata_full: pd.DataFrame) -> pd.DataFrame:
     """Calculates sequence-based features (jumps, previous answers)."""
-    # Filter for AnswerSet and get the last entry per index_col
-    mask = df_active_paradata['event'] == 'AnswerSet'
-    df_last = df_active_paradata[mask].groupby('index_col').last()
+    # Filter for AnswerSet and get the last entry per index_col (filter is already applied in base item table creation)
+    # mask = df_paradata_full['event'] == 'AnswerSet'
+    df_last = df_paradata_full.groupby('index_col').last().copy()  
 
     # The groupby puts index_col in the index.
     # We need to sort by interview_id and order to reconstruct the sequence flow.
@@ -228,7 +228,7 @@ def add_unit_time_features(df_unit: pd.DataFrame, df_time: pd.DataFrame, allowed
 
 # --- Base Table Creation ---
 
-def create_base_item_table(microdata: pd.DataFrame, paradata_active: pd.DataFrame, parameters: dict) -> pd.DataFrame:
+def create_base_item_table(microdata: pd.DataFrame, paradata_full: pd.DataFrame, parameters: dict) -> pd.DataFrame:
     """
     Creates the base item table by merging microdata with paradata information.
     Equivalent to FeatureProcessing.make_df_item.
@@ -248,33 +248,38 @@ def create_base_item_table(microdata: pd.DataFrame, paradata_active: pd.DataFram
     
     # 2. Select initial columns
     columns = ['value', "qtype", 'is_integer', 'qnr_seq',
-                    'n_answers', 'answer_sequence',
-                    'cascade_from_question_id', 'is_filtered_combobox',
-                    'index_col'] + item_level_columns
+               'n_answers', 'answer_sequence', 
+               'cascade_from_question_id', 'is_filtered_combobox',
+               'index_col'] + item_level_columns
     
     # Intersect with available columns to avoid KeyErrors
-    # columns = [c for c in columns if c in df_item.columns]
     df_item = df_item[columns].copy()
 
     # 3. Prepare Paradata for Merge
     # We want the *last* AnswerSet for each item
     paradata_columns = ['responsible', 'f__answer_hour_set', 'interviewing', 'tz_offset']
-    available_para_cols = [c for c in paradata_columns if c in paradata_active.columns]
+    # available_para_cols = [c for c in paradata_columns if c in paradata_full.columns]
     
-    answer_set_mask = (paradata_active['event'] == 'AnswerSet')
-    
- # # Already present in paradata_active from ingestion, but ensure it's there for merging
-    # if 'index_col' not in paradata_active.columns:
-    #     paradata_active = make_index_col(paradata_active.copy())
+    # The filter paradata_full['role'] == 1 is already applied in the paradata processing node,
+    # so all events in paradata_full should be from the interviewer.
+    paradata_full['question_scope'] = paradata_full['question_scope'].fillna('')
+    question_scope_mask = paradata_full['question_scope'].isin([0, ''])
+    answer_set_mask = (paradata_full['event'] == 'AnswerSet')
+    active_events_mask = [
+    'InterviewCreated', 'AnswerSet', 'AnswerRemoved', 'CommentSet', 
+    'Restarted', 'Resumed' # pause events, which have empty question scope
+    ]
         
     data_to_merge = (
-        paradata_active[answer_set_mask]
-        .dropna(subset=['index_col'])             # drop rows without index_col
-        .drop_duplicates(subset='index_col', keep='last')
-        )
-    
+        paradata_full[answer_set_mask & question_scope_mask]
+        .dropna(subset=['index_col']) # drop rows without index_col
+        # keep the last AnswerSet per item, paradata is already sorted by interview__id and order in the processing node
+        .drop_duplicates(subset='index_col', keep='last') 
+        [['index_col'] + paradata_columns]    # select only necessary columns for merging
+    )
+
     # 4. Merge
-    df_item = df_item.merge(data_to_merge[available_para_cols + ['index_col']], how='left', on='index_col')
+    df_item = df_item.merge(data_to_merge[paradata_columns + ['index_col']], how='left', on='index_col')
 
     # 5. Filter for 'interviewing' == True (Supervisor Logic)
     # Remove items that are not in interviewing
@@ -282,17 +287,17 @@ def create_base_item_table(microdata: pd.DataFrame, paradata_active: pd.DataFram
 
     # 6. Add Sequence Features
     if calculate_sequence:
-        df_sequence = get_df_sequence(paradata_active)
+        df_sequence = get_df_sequence(paradata_full[answer_set_mask & question_scope_mask])
         df_item = add_sequence_features(df_item, df_sequence, allowed_features)
 
     # 7. Add Time Features
     if calculate_time:
-        df_time = get_df_time(paradata_active)
+        df_time = get_df_time(paradata_full[active_events_mask & question_scope_mask])
         df_item = add_item_time_features(df_item, df_time, allowed_features, item_level_columns)
 
     return df_item
 
-def create_base_unit_table(paradata_active: pd.DataFrame, parameters: dict) -> pd.DataFrame:
+def create_base_unit_table(paradata_full: pd.DataFrame, parameters: dict) -> pd.DataFrame:
     """
     Creates the base unit table (one row per interview).
     Equivalent to FeatureProcessing.make_df_unit.
@@ -302,8 +307,18 @@ def create_base_unit_table(paradata_active: pd.DataFrame, parameters: dict) -> p
     
     # 1. Initialize from paradata
     columns = ['interview__id', 'responsible', 'qnr', 'qnr_version']
-    # columns = [c for c in columns if c in paradata_active.columns]
     
+    # The filter paradata_full['role'] == 1 is already applied in the paradata processing node,
+    # so all events in paradata_full should be from the interviewer.
+    paradata_full['question_scope'] = paradata_full['question_scope'].fillna('')
+    question_scope_mask = paradata_full['question_scope'].isin([0, ''])
+    active_events_mask = [
+    'InterviewCreated', 'AnswerSet', 'AnswerRemoved', 'CommentSet', 
+    'Restarted', 'Resumed' # pause events, which have empty question scope
+    ]
+    paradata_active = paradata_full[active_events_mask & question_scope_mask].copy()
+
+
     df_unit = paradata_active[columns].copy()
     df_unit.drop_duplicates(inplace=True)
     
@@ -440,42 +455,40 @@ def feat_answer_position(df_item, **kwargs):
         
     return df_item
 
-def feat_answer_removed(df_item, **kwargs):
+def feat_answer_removed(paradata_full):
     # f__answer_removed, answers removed (by interviewer, or by system as a result of interviewer action).
     # Matches legacy get_feature_item__answer_removed which uses self.df_paradata, but it appends the 
     # feature to the item table instead of returning a separate dataframe. 
     # (all events, role=1, interviewing=True).
     # The legacy method notes this feature may include items no longer in microdata.
     feature_name = 'f__answer_removed'
-    paradata_full = kwargs.get('paradata_full')
-    if paradata_full is None:
-        return df_item
 
     removed_mask = (
         (paradata_full['event'] == 'AnswerRemoved') &
-        (paradata_full['role'] == 1)
+        (paradata_full['role'] == 1) # interviewer role is already filtered in paradata processing node
     )
-    df_removed = paradata_full[removed_mask]
+
+    df_removed = paradata_full[removed_mask].copy()
     if df_removed.empty:
-        return df_item
+        return df_removed
 
     # Align grouping grain with legacy helper exactly.
     group_cols = ['interview__id', 'responsible', 'variable_name', 'qnr_seq']
-    if any(c not in df_removed.columns for c in group_cols) or any(c not in df_item.columns for c in group_cols):
+    if any(c not in df_removed.columns for c in group_cols):
         logger.warning(
             "%s: missing one or more legacy group columns (%s); skipping feature.",
             feature_name,
             group_cols,
         )
-        return df_item
+        return df_removed
 
-    df_agg = df_removed.groupby(group_cols).agg(
+    df_agg_removed = df_removed.groupby(group_cols).agg(
         f__answer_removed=('order', 'count')
     ).reset_index()
 
-    # Keep item table cardinality while assigning legacy-grain counts.
-    df_item = df_item.merge(df_agg[group_cols + [feature_name]], how='left', on=group_cols)
-    return df_item
+    # # Keep item table cardinality while assigning legacy-grain counts.
+    # df_item = df_item.merge(df_agg_removed[group_cols + [feature_name]], how='left', on=group_cols)
+    return df_agg_removed
 
 
 def feat_answer_changed(df_item, **kwargs):
@@ -486,13 +499,13 @@ def feat_answer_changed(df_item, **kwargs):
     combines both checks using a bitwise OR.
     """
     feature_name = 'f__answer_changed'
-    paradata_active = kwargs.get('paradata_active')
+    paradata_full = kwargs.get('paradata_full')
 
-    if paradata_active is None:
+    if paradata_full is None:
         return df_item
 
     item_level_columns = ['interview__id', 'variable_name', 'roster_level']
-    df_changed = paradata_active[paradata_active['event'] == 'AnswerSet'].copy()
+    df_changed = paradata_full[(paradata_full['event'] == 'AnswerSet') & (paradata_full['question_scope'].isin([0]))].copy()
 
     df_changed[feature_name] = False
     group_cols = [c for c in item_level_columns + ['index_col'] if c in df_changed.columns]
@@ -671,10 +684,9 @@ ITEM_FEATURE_MAP = {
 }
 
 
-def enrich_item_features(df_item: pd.DataFrame, paradata_active: pd.DataFrame, paradata_full: pd.DataFrame, parameters: dict) -> pd.DataFrame:
+def enrich_item_features(df_item: pd.DataFrame, paradata_full: pd.DataFrame, parameters: dict) -> pd.DataFrame:
     """
     Applies feature engineering logic to the item table.
-    paradata_active: active interviewer events (self.df_active_paradata equivalent).
     paradata_full: all processed events, role=1, interviewing=True (self.df_paradata equivalent).
     """
     logger.info("Enriching item features...")
@@ -686,7 +698,7 @@ def enrich_item_features(df_item: pd.DataFrame, paradata_active: pd.DataFrame, p
             if func:
                 logger.info(f"Calculating item feature: {feat_key}")
                 try:
-                    df_item = func(df_item, paradata_active=paradata_active, paradata_full=paradata_full)
+                    df_item = func(df_item, paradata_full=paradata_full)
                 except Exception as e:
                     logger.warning(f"Failed to calculate {feat_key}: {e}")
 

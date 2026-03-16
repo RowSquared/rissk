@@ -19,6 +19,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             outputs="paradata_processed",
             name="process_paradata_node",
         ),
+        # This node is redundant and the filters will be moved to feature creation nodes
         node(
             func=filter_active_paradata_node,
             inputs=["paradata_processed", "parameters"],

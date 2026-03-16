@@ -162,10 +162,11 @@ def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd
     # running great-circle calculations for every pair.
     data['x'], data['y'], data['z'] = lat_lon_to_cartesian(data['f__gps_latitude'], data['f__gps_longitude'])
     # Accuracy is expected to accompany a GPS fix (Survey Solutions provides it).
-    # We convert `f__gps_accuracy` from metres → kilometres to match `lat_lon_to_cartesian`
-    # and use `fillna(0)` to avoid NaN radii. Revisit this behaviour because `query_ball_point` may
-    # return empty neighbor lists or raise when given NaN radii.
-  
+    # We convert `f__gps_accuracy` from metres → kilometres to match `lat_lon_to_cartesian`.
+    # `fillna(0)` is intentional here: it is a computational guard — a NaN radius would
+    # cause `query_ball_point` to raise or silently return empty results. Zero accuracy
+    # means we only use the base 10m radius for that point, which is a safe fallback.
+    # This is a parameter value, not a score output, so it is not subject to the NaN policy.
     data['accuracy'] = data['f__gps_accuracy'].fillna(0) / 1e3
 
     # Build spatial index (KDTree) on 3D cartesian coords to count neighbours.
@@ -224,10 +225,14 @@ def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd
             model = LOF(contamination=contamination, n_neighbors=20)
         model.fit(data.loc[mask, coords_columns])
         data.loc[mask, 's__gps_outlier'] = model.predict(data.loc[mask, coords_columns])
+        # Extreme outlier rows excluded from model fitting keep NaN for s__gps_outlier —
+        # they are already classified as extreme outliers and the spatial model cannot
+        # evaluate them; NaN signals that no evaluation was possible for those points.
     else:
-        data['s__gps_outlier'] = 0
-
-    data['s__gps_outlier'] = data['s__gps_outlier'].fillna(0)
+        # All GPS points are extreme outliers (e.g. all 0,0). The spatial outlier model
+        # cannot run because there are no valid points to fit. s__gps_outlier = NaN
+        # for all, since no evaluation was possible.
+        data['s__gps_outlier'] = np.nan
 
     # Merge interview-level scores back to every row in the full long-format df.
     # Rows for interviews that had no GPS answers are left as NaN — they are not
@@ -337,19 +342,17 @@ def calculate_answer_hour_set_score(df_item: pd.DataFrame, parameters: Dict[str,
     model = ECOD(contamination=contamination)
     model.fit(df[[feature_name]])
     df[score_name] = model.predict(df[[feature_name]])
-    # In case has detected "high frequencies anomalies", set them to 0
-    df.loc[df['frequency'] <= df[df[score_name] == 0]['frequency'].min(), score_name] = 0
 
-
-    # # In case ECOD has flagged high-frequency hours as anomalies, revert them to 0.
-    # # Guard against the degenerate case where every row is an outlier (no inliers),
-    # # which would make df[df[score_name] == 0]['frequency'].min() return NaN and
-    # # silently skip the correction via NaN comparison.
-    # inlier_mask = df[score_name] == 0
-    # if inlier_mask.any():
-    #     min_inlier_rank = df.loc[inlier_mask, 'frequency'].min()
-    #     df.loc[df['frequency'] <= min_inlier_rank, score_name] = 0
-
+    # Revert high-frequency hours that ECOD incorrectly flagged as anomalies.
+    # Guard against the degenerate case where every row is an outlier (no inliers),
+    # which would make the unguarded expression return NaN and silently skip the
+    # correction. Legacy code has this silent failure; Kedro uses the explicit guard.
+    inlier_mask = df[score_name] == 0
+    if inlier_mask.any():
+        min_inlier_rank = df.loc[inlier_mask, 'frequency'].min()
+        df.loc[df['frequency'] <= min_inlier_rank, score_name] = 0
+    # If no inliers exist (all rows flagged), scores remain as predicted — NaN was
+    # never introduced here since ECOD always returns 0/1, so no further action needed.
 
     # Assign scores back using index labels — safe regardless of index type or value
     df_out.loc[df.index, score_name] = df[score_name].values
@@ -444,7 +447,10 @@ def calculate_answer_removed_unit_score(
 
     valid_variables = filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=1)
 
-    df[score_name] = 0
+    # Init to NaN: variables not passing the frequency filter keep NaN, indicating
+    # evaluation was not possible — unit-level groupby().mean() skips NaN so they
+    # don't contribute a spurious zero to the interview mean.
+    df[score_name] = np.nan
     contamination = get_contamination_parameter(
         parameters.get('features', {}),
         feature_name,
@@ -461,6 +467,7 @@ def calculate_answer_removed_unit_score(
             df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
 
     # Aggregate to interview__id level matching legacy make_score_unit__answer_removed.
+    # groupby().mean() skips NaN rows, so only scored variables contribute.
     return df.groupby('interview__id')[score_name].mean()
 
 
@@ -475,7 +482,8 @@ def calculate_answer_position_score(df_item: pd.DataFrame) -> pd.DataFrame:
         df[score_name] = np.nan
         return df
 
-    valid_variables = filter_variable_name_by_frequency(df[~pd.isnull(df[feature_name])], feature_name, frequency=100, min_unique_values=3)
+    valid_variables = filter_variable_name_by_frequency(
+        df[~pd.isnull(df[feature_name])], feature_name, frequency=100, min_unique_values=3)
     df[score_name] = np.nan
     
     for var in valid_variables:
@@ -510,13 +518,16 @@ def calculate_answer_selected_score(df_item: pd.DataFrame, parameters: Dict[str,
         df[score_name + '_upper'] = np.nan
         return df
 
-    valid_data = df[~pd.isnull(df[feature_name])]
-    valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=3)
+    valid_variables = filter_variable_name_by_frequency(
+        df[~pd.isnull(df[feature_name])], feature_name, frequency=100, min_unique_values=3)
     
     score_name1 = score_name + '_lower'
     score_name2 = score_name + '_upper'
+    df[score_name1] = np.nan
+    df[score_name2] = np.nan
     df[score_name] = np.nan
-    
+
+
     contamination = get_contamination_parameter(
         parameters.get('features', {}),
         feature_name,
@@ -532,8 +543,8 @@ def calculate_answer_selected_score(df_item: pd.DataFrame, parameters: Dict[str,
             model.fit(df.loc[mask, [feature_name]])
             
             df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
-            
             non_anomalies = df.loc[mask & (df[score_name] == 0), feature_name]
+            
             if not non_anomalies.empty:
                 min_good_value = non_anomalies.min()
                 max_good_value = non_anomalies.max()
@@ -547,6 +558,7 @@ def calculate_answer_selected_score(df_item: pd.DataFrame, parameters: Dict[str,
     df.drop(columns=[score_name], errors='ignore', inplace=True)
     return df
 
+
 def calculate_answer_duration_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
     feature_name = 'f__answer_duration'
     score_name = rename_feature(feature_name)
@@ -558,9 +570,10 @@ def calculate_answer_duration_score(df_item: pd.DataFrame, parameters: Dict[str,
         df[score_name + '_lower'] = np.nan
         df[score_name + '_upper'] = np.nan
         return df
-
-    valid_data = df[~pd.isnull(df[feature_name])]
-    valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=3)
+    
+    # Select only those variables that have at least three distinct values and more than one hundred records
+    valid_variables = filter_variable_name_by_frequency(
+        df[~pd.isnull(df[feature_name])], feature_name, frequency=100, min_unique_values=3)
 
     score_name1 = score_name + '_lower'
     score_name2 = score_name + '_upper'
@@ -597,40 +610,38 @@ def calculate_answer_duration_score(df_item: pd.DataFrame, parameters: Dict[str,
     df.drop(columns=[score_name], errors='ignore', inplace=True)
     return df
 
-def calculate_single_question_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+def calculate_single_question_score(df_item: pd.DataFrame) -> pd.DataFrame:
     feature_name = 'f__single_question'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
-    
-    if 'qtype' not in df.columns or 'n_answers' not in df.columns or 'value' not in df.columns:
-        return df
+    columns = ['qtype', 'n_answers', 'is_filtered_combobox', 'cascade_from_question_id']
 
+    if any(col not in df.columns for col in columns + [feature_name]):
+        return df
+    
     # Mask specific for single questions without filter rules bypassing cascades
     single_question_mask = (
         (df["qtype"] == 'SingleQuestion') & 
         (df['n_answers'] > 1) & 
-        (df.get('is_filtered_combobox', False) == False) & 
-        (pd.isnull(df.get('cascade_from_question_id', np.nan)))
+        (df['is_filtered_combobox'] == False) & 
+        (pd.isnull(df['cascade_from_question_id']))
     )
 
     df[score_name] = np.nan
-    valid_data = df[single_question_mask]
+    valid_data = df[single_question_mask]&df[~pd.isnull(df[feature_name])]
     if valid_data.empty:
         return df
-    
+
     variables = filter_variable_name_by_frequency(valid_data, 'value', frequency=100, min_unique_values=3)
     
     for var in variables:
-        mask = (df['variable_name'] == var) & single_question_mask
+        mask = (df['variable_name'] == var) & single_question_mask & (~pd.isnull(df[feature_name]))
         if mask.sum() > 0:
             unique_values = df.loc[mask, 'value'].nunique()
-            try:
-                entropy_df = df[mask].groupby('responsible')['value'].apply(
-                    calculate_entropy, unique_values=unique_values
-                ).reset_index()
-            except NameError:
-                continue
 
+            entropy_df = df[mask].groupby('responsible')['value'].apply(
+                calculate_entropy, unique_values=unique_values
+            ).reset_index()
             entropy_df = entropy_df[~pd.isnull(entropy_df['value'])]
 
             if entropy_df.shape[0] > 0:
@@ -640,28 +651,27 @@ def calculate_single_question_score(df_item: pd.DataFrame, parameters: Dict[str,
                     lambda x: 1 if x < median_value - 0.5 * median_value else 0)
                 
                 responsible_map = entropy_df.set_index('responsible')[score_name].to_dict()
-                df.loc[mask, score_name] = df.loc[mask, 'responsible'].map(responsible_map).fillna(0)
+                df.loc[mask, score_name] = df.loc[mask, 'responsible'].map(responsible_map)
                 
     return df
 
-def calculate_multi_option_question_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+
+def calculate_multi_option_question_score(df_item: pd.DataFrame) -> pd.DataFrame:
     feature_name = 'f__multi_option_question'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
     
-    if 'qtype' not in df.columns or 'value' not in df.columns:
+    if any(col not in df.columns for col in ['qtype', feature_name]):
         return df
 
-    multi_question_mask = (df["qtype"] == 'MultyOptionsQuestion')
-    valid_data = df[multi_question_mask]
+    multi_question_mask = (df["qtype"] == 'MultyOptionsQuestion') & (~pd.isnull(df[feature_name]))
+    valid_data = df[multi_question_mask].copy()
 
     df[score_name] = np.nan
     if valid_data.empty:
         return df
     
-    # Filter variables safely via counts
-    val_counts = valid_data['variable_name'].value_counts()
-    variables = val_counts[val_counts >= 100].index
+    variables = filter_variable_name_by_frequency(valid_data, 'value', frequency=100, min_unique_values=3)
 
     for var in variables:
         mask = (df['variable_name'] == var) & multi_question_mask
@@ -669,12 +679,11 @@ def calculate_multi_option_question_score(df_item: pd.DataFrame, parameters: Dic
             # Need safely explode nested lists in values
             exploded_vals = df.loc[mask, 'value'].explode()
             unique_values = len([v for v in exploded_vals.unique() if v != '##N/A##'])
-            try:
-                entropy_df = df[mask].groupby('responsible')['value'].apply(
-                    calculate_list_entropy, unique_values=unique_values, min_record_sample=5
-                ).reset_index()
-            except NameError:
-                continue
+
+            entropy_df = df[mask].groupby('responsible')['value'].apply(
+                calculate_list_entropy, unique_values=unique_values, min_record_sample=5
+            ).reset_index()
+   
 
             entropy_df = entropy_df[~pd.isnull(entropy_df['value'])]
 
@@ -685,11 +694,11 @@ def calculate_multi_option_question_score(df_item: pd.DataFrame, parameters: Dic
                     lambda x: 1 if x < median_value - 0.5 * median_value else 0)
                 
                 responsible_map = entropy_df.set_index('responsible')[score_name].to_dict()
-                df.loc[mask, score_name] = df.loc[mask, 'responsible'].map(responsible_map).fillna(0)
+                df.loc[mask, score_name] = df.loc[mask, 'responsible'].map(responsible_map)
 
     return df
 
-def calculate_first_digit_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+def calculate_first_digit_score(df_item: pd.DataFrame) -> pd.DataFrame:
     feature_name = 'f__numeric_response'
     score_name = 's__first_digit'
     df = df_item.copy()
@@ -703,14 +712,20 @@ def calculate_first_digit_score(df_item: pd.DataFrame, parameters: Dict[str, Any
     valid_data = df[~pd.isnull(df[feature_name])]
     valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=3)
     df[score_name] = np.nan
+
+    valid_variables = filter_variables_by_magnitude(valid_data, feature_name, valid_variables, min_order_of_magnitude=3)
     
-    try:
-        valid_variables = filter_variables_by_magnitude(valid_data, feature_name, valid_variables, min_order_of_magnitude=3)
-        benford_jensen_df = apply_benford_tests(
-            valid_data, valid_variables, 'responsible', feature_name, apply_first_digit=True, minimum_sample=50
-        )
-    except NameError:
-        return df # dependencies missing
+    
+    # Computes the Jensen divergence for each variable_name and responsible on the first digit distribution.
+    # Jensen's divergence returns a value between (0, 1) of how much the first digit distribution
+    # of specific responsible is similar to the first digit distribution of all others.
+    # Higher the value higher is the difference.
+    # The Bendford Jensen divergence is calculated only on those responsible and variable_name
+    # who have at least 50 records.
+    # Once it is calculated, values that diverge from more than 50% from the median value get marked as "anomalous."
+    benford_jensen_df = apply_benford_tests(
+        valid_data, valid_variables, 'responsible', feature_name, apply_first_digit=True, minimum_sample=50
+    )
         
     if not benford_jensen_df.empty:
         variable_list = benford_jensen_df['variable_name'].unique()
@@ -725,7 +740,9 @@ def calculate_first_digit_score(df_item: pd.DataFrame, parameters: Dict[str, Any
                 
                 mask = (df['variable_name'] == var)
                 responsible_map = bj_df.set_index('responsible')[score_name].to_dict()
-                df.loc[mask, score_name] = df.loc[mask, 'responsible'].map(responsible_map).fillna(0)
+                # Responsibles absent from the map (below 50-record Benford threshold)
+                # keep NaN — evaluation was not possible for them.
+                df.loc[mask, score_name] = df.loc[mask, 'responsible'].map(responsible_map)
                 
     return df
 

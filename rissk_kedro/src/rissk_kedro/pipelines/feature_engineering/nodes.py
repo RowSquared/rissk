@@ -78,18 +78,18 @@ def filter_active_paradata_node(
         Active paradata DataFrame: keep active events, prior rejection/review events, for questions with scope interviewer
     """
     active_events = [
-        'InterviewCreated', 'AnswerSet', 'Resumed', 
-        'AnswerRemoved', 'CommentSet', 'Restarted'
+        'InterviewCreated', 'AnswerSet', 'AnswerRemoved', 'CommentSet', 
+        'Restarted', 'Resumed' # pause events, which have empty question scope
     ]
-    # only keep events done by interview (in most cases this should be all, after above filters,
     # just in case supervisor or HQ answered something while interviewer answered on web mode)
     # keep active events, prior rejection/review events, for questions with scope interviewer    
 
     # Filter conditions
+    paradata_processed['question_scope'] = paradata_processed['question_scope'].fillna('')  # Fill NaN with empty string for consistent filtering
     active_mask = (
         (paradata_processed['event'].isin(active_events)) &
-        (paradata_processed['question_scope'].isin([0, ''])) &
-        (paradata_processed['role'] == 1)
+        (paradata_processed['question_scope'].isin([0, ''])) & # question scope interviewer only, but fillna so pauses are added back in, as they have empty question scope
+        (paradata_processed['role'] == 1) # redundant given previous filtering
     )
     
     vars_needed = [
