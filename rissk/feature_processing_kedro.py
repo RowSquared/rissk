@@ -67,8 +67,6 @@ def get_df_time(df_paradata_full: pd.DataFrame) -> pd.DataFrame:
     - InterviewCreated / Resumed / Restarted: no question scope (NaN); included regardless.
     - All other event types (Completed, ApprovalRequested, etc.): excluded.
 
-    Computing .diff() on the full paradata would fragment time gaps with irrelevant events,
-    producing shorter (and wrong) durations for the active events that follow them.
     """
     # Events that carry a question scope — keep only interviewer-scope (== 0).
     # NaN scope (supervisor-originated or no-question events) is intentionally excluded here.

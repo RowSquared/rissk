@@ -36,9 +36,9 @@ paradata_processed:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/paradata_processed.parquet
 
-paradata_active:
-  type: pandas.ParquetDataset
-  filepath: data/${globals:survey.name}/latest/30_PROCESSED/paradata_active.parquet
+# paradata_active has been removed: the active-event filter is now applied inline
+# within each function that needs it, using explicit event and question_scope masks.
+# This avoids silently dropping pause events (Resumed/Restarted) which have NaN scope.
 
 
 # === LEGACY DATA FOR PIPELINE TESTING ===
@@ -77,6 +77,13 @@ item_features:
 unit_features:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/unit_features.parquet
+
+# Aggregated AnswerRemoved events (includes items deleted from microdata).
+# Used by the rissk_scoring pipeline to compute s__answer_removed at unit level,
+# matching legacy get_feature_item__answer_removed / make_score_unit__answer_removed.
+removed_answers:
+  type: pandas.ParquetDataset
+  filepath: data/${globals:survey.name}/latest/30_PROCESSED/removed_answers.parquet
 
 
 # === SCORING DataFrames ===
