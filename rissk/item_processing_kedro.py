@@ -518,6 +518,9 @@ def calculate_answer_removed_score_from_df(
             df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
 
     return df.groupby('interview__id')[score_name].mean()
+
+
+def calculate_answer_position_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
     feature_name = 'f__answer_position'
     score_name = rename_feature(feature_name)
     df = df_item.copy()

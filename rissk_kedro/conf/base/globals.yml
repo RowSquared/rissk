@@ -20,7 +20,7 @@ survey:
 #   name: "slchbs"
 #   questionnaires:
 #     - name: "slchbs_saintlucia_2025"
-#       VERSION: [5, 6, 7]
+#       VERSION: [6, 7] # 5 is for testing empty data handling
 
 # survey:
 #   name: "fbf house holduntitled folder"
