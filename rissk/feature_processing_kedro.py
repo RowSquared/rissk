@@ -24,7 +24,7 @@ def make_index_col(df: pd.DataFrame) -> pd.DataFrame:
     df['index_col'] = df['index_col'].str.strip('_')
     return df
 
-def get_numeric_mask(df_item: pd.DataFrame) -> pd.Series:
+def get_numeric_mask(df_item: pd.DataFrame, filter_answer_values: bool) -> pd.Series:
     """Returns a boolean mask for valid numeric question rows, matching the legacy numeric_question_mask."""
     sentinel_mask = _is_missing_numeric_sentinel(df_item['value'])
     mask = (
@@ -33,12 +33,42 @@ def get_numeric_mask(df_item: pd.DataFrame) -> pd.Series:
         (~pd.isnull(df_item['value'])) &
         (~sentinel_mask)
     )
+    if filter_answer_values:
+        answer_mask = _is_answer_value(df_item['value'], df_item['answer_sequence'])
+        mask &= ~answer_mask
     return mask
 
 
 def _is_missing_numeric_sentinel(values: pd.Series) -> pd.Series:
     """Robustly detects the numeric missing-value sentinel across mixed object values."""
     return pd.to_numeric(values, errors='coerce').eq(-999999999)
+
+def _is_answer_value(values: pd.Series, answer_sequence: pd.Series) -> pd.Series:
+    """Returns True where the numeric value matches an item in the answer_sequence list.
+
+    answer_sequence is expected to be the string-coerced form produced by
+    paradata['answer_sequence'].apply(str), e.g. "[1, 2]", "[0, -99]", "nan".
+    """
+    def _row_is_answer(value, seq_str):
+        if not isinstance(seq_str, str) or seq_str in ('nan', 'None', ''):
+            return False
+        try:
+            items = ast.literal_eval(seq_str)
+        except (ValueError, SyntaxError):
+            return False
+        if not isinstance(items, list):
+            return False
+        numeric_val = pd.to_numeric(value, errors='coerce')
+        if pd.isna(numeric_val):
+            return False
+        return any(numeric_val == pd.to_numeric(item, errors='coerce') for item in items)
+
+    return pd.Series(
+        [_row_is_answer(v, s) for v, s in zip(values, answer_sequence)],
+        index=values.index,
+        dtype=bool,
+    )
+
 
 def _coerce_numeric_with_warning(df_item: pd.DataFrame, numeric_mask: pd.Series, feature_name: str) -> pd.Series:
     """Coerce numeric values and warn about rows that cannot be parsed."""
@@ -63,7 +93,6 @@ def get_df_time(df_paradata_full: pd.DataFrame) -> pd.DataFrame:
 
     Mirrors the legacy df_active_paradata filter before computing time deltas:
     - AnswerSet / AnswerRemoved / CommentSet: included only when question_scope == 0
-      (interviewer-scope questions; supervisor-scope questions with scope == 1 are excluded).
     - InterviewCreated / Resumed / Restarted: no question scope (NaN); included regardless.
     - All other event types (Completed, ApprovalRequested, etc.): excluded.
 
@@ -370,7 +399,7 @@ def feat_string_length(df_item, **kwargs):
 def feat_numeric_response(df_item, **kwargs):
     # f__numeric_response, response, if NumericQuestions, else empty pd.NA
     feature_name = 'f__numeric_response'
-    numeric_mask = get_numeric_mask(df_item)
+    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=False)
     df_item[feature_name] = np.nan
     if numeric_mask.any():
         numeric_values = _coerce_numeric_with_warning(df_item, numeric_mask, feature_name)
@@ -380,7 +409,7 @@ def feat_numeric_response(df_item, **kwargs):
 def feat_first_digit(df_item, **kwargs):
     # f__first_digit, first digit of the response if numeric question else empty pd.NA
     feature_name = 'f__first_digit'
-    numeric_mask = get_numeric_mask(df_item)
+    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=True)
     df_item[feature_name] = pd.NA
     if numeric_mask.any():
         numeric_values = _coerce_numeric_with_warning(df_item, numeric_mask, feature_name)
@@ -393,7 +422,7 @@ def feat_last_digit(df_item, **kwargs):
     # f__last_digit, modulus of 10 of the response if numeric question else empty pd.NA
     feature_name = 'f__last_digit'
     # Use the same mask as legacy: excludes empty, null, and -999999999
-    numeric_mask = get_numeric_mask(df_item)
+    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=True)
     df_item[feature_name] = pd.NA
 
     if numeric_mask.any():
@@ -415,7 +444,7 @@ def feat_first_decimal(df_item, **kwargs):
     
     if mask.any():
         values = pd.to_numeric(df_item.loc[mask, 'value'], errors='coerce')
-        res = np.floor(values * 100) % 100
+        res = np.floor(values * 10) % 10
         df_item.loc[mask, feature_name] = res.astype('Int64')
 
     # Match legacy: ensure the full feature column uses nullable integer dtype.

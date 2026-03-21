@@ -85,10 +85,10 @@ def filter_active_paradata_node(
     # keep active events, prior rejection/review events, for questions with scope interviewer    
 
     # Filter conditions
-    paradata_processed['question_scope'] = paradata_processed['question_scope'].fillna('')  # Fill NaN with empty string for consistent filtering
     active_mask = (
         (paradata_processed['event'].isin(active_events)) &
-        (paradata_processed['question_scope'].isin([0, ''])) & # question scope interviewer only, but fillna so pauses are added back in, as they have empty question scope
+        # question scope interviewer only. Pause events and interview-created have NaN scope
+        (paradata_processed['question_scope'].isin([0, None])) & 
         (paradata_processed['role'] == 1) # redundant given previous filtering
     )
     

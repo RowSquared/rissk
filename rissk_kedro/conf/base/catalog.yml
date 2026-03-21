@@ -36,9 +36,11 @@ paradata_processed:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/paradata_processed.parquet
 
-# paradata_active has been removed: the active-event filter is now applied inline
-# within each function that needs it, using explicit event and question_scope masks.
-# This avoids silently dropping pause events (Resumed/Restarted) which have NaN scope.
+# paradata_active is provided for legacy compatibility. New feature functions may
+# apply question_scope filters inline; legacy code expects this dataset.
+paradata_active:
+  type: pandas.ParquetDataset
+  filepath: data/${globals:survey.name}/latest/30_PROCESSED/paradata_active.parquet
 
 
 # === LEGACY DATA FOR PIPELINE TESTING ===
