@@ -203,6 +203,11 @@ def add_item_time_features(df_item: pd.DataFrame, df_time: pd.DataFrame, allowed
     if selected_features:
         # Filter out empty variable_name (Pauses)
         df_time_filtered = df_time[df_time['variable_name'] != ''].copy()
+        # AnswerRemoved / CommentSet events have roster_level=None in paradata (no roster context
+        # is recorded on removal/comment events), while AnswerSet rows carry ''. Normalise to ''
+        # so they land in the same groupby bucket as the corresponding AnswerSet events, matching
+        # the legacy behaviour where process_paradata does fillna('') on the whole dataframe.
+        df_time_filtered['roster_level'] = df_time_filtered['roster_level'].fillna('')
         
         # Summarize on item level
         # Note: df_time might have multiple events per item (e.g. AnswerRemoved then AnswerSet)
@@ -399,6 +404,8 @@ def feat_string_length(df_item, **kwargs):
 def feat_numeric_response(df_item, **kwargs):
     # f__numeric_response, response, if NumericQuestions, else empty pd.NA
     feature_name = 'f__numeric_response'
+    # Use the same mask as legacy: excludes empty, null, and -999999999
+    # filter_answer_values=True would exclude values that match the answer options (legacy did not apply this filter)
     numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=False)
     df_item[feature_name] = np.nan
     if numeric_mask.any():
@@ -409,7 +416,9 @@ def feat_numeric_response(df_item, **kwargs):
 def feat_first_digit(df_item, **kwargs):
     # f__first_digit, first digit of the response if numeric question else empty pd.NA
     feature_name = 'f__first_digit'
-    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=True)
+    # Use the same mask as legacy: excludes empty, null, and -999999999
+    # filter_answer_values=True would exclude values that match the answer options (legacy did not apply this filter)
+    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=False)
     df_item[feature_name] = pd.NA
     if numeric_mask.any():
         numeric_values = _coerce_numeric_with_warning(df_item, numeric_mask, feature_name)
@@ -422,7 +431,8 @@ def feat_last_digit(df_item, **kwargs):
     # f__last_digit, modulus of 10 of the response if numeric question else empty pd.NA
     feature_name = 'f__last_digit'
     # Use the same mask as legacy: excludes empty, null, and -999999999
-    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=True)
+    # filter_answer_values=True would exclude values that match the answer options (legacy did not apply this filter)
+    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=False)
     df_item[feature_name] = pd.NA
 
     if numeric_mask.any():
@@ -557,10 +567,9 @@ def feat_answer_changed(df_item, **kwargs):
 
     # --- Case 1: TextListQuestion and MultyOptionsQuestion (without yes_no_view mode) ---
     # Keep flow aligned with legacy while scoping masks to their intended qtypes.
-    list_mask = (
-        (df_changed["qtype"] == 'TextListQuestion') &
-        (df_changed['yes_no_view'] == False)
-    ) if has_yes_no else (df_changed["qtype"] == 'TextListQuestion')
+    # TextListQuestion don't have yes_no_view mode.
+    list_mask = df_changed["qtype"] == 'TextListQuestion'
+    
     multi_mask = (
         (df_changed["qtype"] == 'MultyOptionsQuestion') &
         (df_changed['yes_no_view'] == False)
