@@ -34,24 +34,67 @@ def calculate_item_scores(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> 
     """
     Run item level scoring applying various mathematical models.
     f__answer_removed is already present in df_item from the feature creation pipeline.
+    Each scoring function is only executed when its corresponding feature has use: true
+    in parameters['features'], matching the feature creation pipeline behaviour.
     """
     logger.info("Calculating Item Scores...")
-    df_scored = calculate_answer_hour_set_score(df_item, parameters)
-    df_scored = calculate_sequence_jump_score(df_scored, parameters)
-    df_scored = calculate_first_decimal_score(df_scored, parameters)
-    df_scored = calculate_answer_changed_score(df_scored, parameters)
+    features = parameters.get('features', {})
+    df_scored = df_item
+
+    if features.get('answer_hour_set', {}).get('use', False):
+        logger.info("Calculating answer_hour_set_score")
+        df_scored = calculate_answer_hour_set_score(df_scored, parameters)
+
+    if features.get('sequence_jump', {}).get('use', False):
+        logger.info("Calculating sequence_jump_score")
+        df_scored = calculate_sequence_jump_score(df_scored, parameters)
+
+    if features.get('first_decimal', {}).get('use', False):
+        logger.info("Calculating first_decimal_score")
+        df_scored = calculate_first_decimal_score(df_scored, parameters)
+
+    if features.get('answer_changed', {}).get('use', False):
+        logger.info("Calculating answer_changed_score")
+        df_scored = calculate_answer_changed_score(df_scored, parameters)
+
     # s__answer_removed is not computed here — see calculate_answer_removed_score_from_df
     # in calculate_unit_scores, which scores from the removed_answers dataset to match legacy coverage.
-    df_scored = calculate_answer_position_score(df_scored, parameters)
-    df_scored = calculate_answer_selected_score(df_scored, parameters)
-    df_scored = calculate_answer_duration_score(df_scored, parameters)
-    df_scored = calculate_single_question_score(df_scored, parameters)
-    df_scored = calculate_multi_option_question_score(df_scored, parameters)
-    df_scored = calculate_first_digit_score(df_scored, parameters)
-    df_scored = calculate_gps_score(df_scored, parameters)
+
+    if features.get('answer_position', {}).get('use', False):
+        logger.info("Calculating answer_position_score")
+        df_scored = calculate_answer_position_score(df_scored, parameters)
+
+    if features.get('answer_selected', {}).get('use', False):
+        logger.info("Calculating answer_selected_score")
+        df_scored = calculate_answer_selected_score(df_scored, parameters)
+
+    if features.get('answer_duration', {}).get('use', False):
+        logger.info("Calculating answer_duration_score")
+        df_scored = calculate_answer_duration_score(df_scored, parameters)
+
+    if features.get('single_question', {}).get('use', False):
+        logger.info("Calculating single_question_score")
+        df_scored = calculate_single_question_score(df_scored)
+
+    if features.get('multi_option_question', {}).get('use', False):
+        logger.info("Calculating multi_option_question_score")
+        df_scored = calculate_multi_option_question_score(df_scored)
+
+    if features.get('first_digit', {}).get('use', False):
+        logger.info("Calculating first_digit_score")
+        df_scored = calculate_first_digit_score(df_scored)
+
+    if features.get('gps', {}).get('use', False):
+        logger.info("Calculating gps_score")
+        df_scored = calculate_gps_score(df_scored, parameters)
+
     return df_scored
 
-def calculate_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.DataFrame, parameters: Dict[str, Any], removed_answers: pd.DataFrame = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def calculate_unit_scores(
+        df_unit: pd.DataFrame, 
+        df_item_scores: pd.DataFrame, 
+        parameters: Dict[str, Any], removed_answers: pd.DataFrame = None
+        ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Aggregate item scores to unit, extract responsible scores, and calculate global risk.
 
@@ -60,7 +103,8 @@ def calculate_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.DataFrame, p
     items deleted from microdata (absent from df_item) are still counted.
     """
     logger.info("Calculating Unit Scores and Global Risk...")
-    
+    features = parameters.get('features', {})
+
     # 1. Aggregate item-level scores up to unit level.
     # s__answer_removed is excluded from this aggregation (see aggregate_item_to_unit_scores);
     # it is handled below using paradata_full to match legacy coverage.
@@ -70,16 +114,17 @@ def calculate_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.DataFrame, p
     # This replicates legacy make_score_unit__answer_removed which read from df_paradata
     # directly and therefore included AnswerRemoved events for items later deleted from
     # microdata. Falling back to the df_item-based mean when paradata_full is unavailable.
-    if removed_answers is not None and not removed_answers.empty:
-        unit_removed = calculate_answer_removed_score_from_df(removed_answers, parameters)
-        df_unit_scored['s__answer_removed'] = df_unit_scored['interview__id'].map(unit_removed).fillna(0)
-    elif 's__answer_removed' in df_item_scores.columns:
-        logger.warning(
-            "removed_answers not available; falling back to df_item-based s__answer_removed "
-            "aggregation (may undercount removals for deleted items)."
-        )
-        data = df_item_scores.groupby('interview__id')['s__answer_removed'].mean()
-        df_unit_scored['s__answer_removed'] = df_unit_scored['interview__id'].map(data).fillna(0)
+    if features.get('answer_removed', {}).get('use', False):
+        if removed_answers is not None and not removed_answers.empty:
+            unit_removed = calculate_answer_removed_score_from_df(removed_answers, parameters)
+            df_unit_scored['s__answer_removed'] = df_unit_scored['interview__id'].map(unit_removed).fillna(0)
+        elif 's__answer_removed' in df_item_scores.columns:
+            logger.warning(
+                "removed_answers not available; falling back to df_item-based s__answer_removed "
+                "aggregation (may undercount removals for deleted items)."
+            )
+            data = df_item_scores.groupby('interview__id')['s__answer_removed'].mean()
+            df_unit_scored['s__answer_removed'] = df_unit_scored['interview__id'].map(data).fillna(0)
     
     # 2b. Add pure unit-level calculations
     df_unit_scored = calculate_unit_level_scores(df_unit_scored, parameters)

@@ -359,14 +359,17 @@ def create_base_unit_table(paradata_full: pd.DataFrame, parameters: dict) -> pd.
     # 1. Initialize from paradata
     columns = ['interview__id', 'responsible', 'qnr', 'qnr_version']
     
-    # Use interviewer-scope AnswerSet events to seed unit identity rows.
-    # responsible is only reliably populated on AnswerSet events.
-    interviewer_answer_mask = (
-        (paradata_full['event'] == 'AnswerSet') &
-        (paradata_full['question_scope'] == 0)
+    # Match legacy code and use active paradata to seed the unit table.
+    question_scope_events = ['AnswerSet', 'AnswerRemoved', 'CommentSet']
+    # Events that have no question scope (pause / session events); always include.
+    no_scope_events = ['InterviewCreated', 'Resumed', 'Restarted']
+
+    active_mask = (
+        (paradata_full['event'].isin(no_scope_events)) |
+        (paradata_full['event'].isin(question_scope_events) & (paradata_full['question_scope'] == 0))
     )
 
-    df_unit = paradata_full[interviewer_answer_mask][columns].copy()
+    df_unit = paradata_full[active_mask][columns].copy()
     df_unit.drop_duplicates(inplace=True)
 
     # Filter valid responsible

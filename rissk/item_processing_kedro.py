@@ -299,6 +299,7 @@ def calculate_first_decimal_score(df_item: pd.DataFrame, parameters: Dict[str, A
     )
     
     for var in valid_variables:
+        # logger.info(f"Calculating {score_name} for variable: {var}")
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
         if mask.sum() > 0:
             model = COF(contamination=contamination)
@@ -665,7 +666,9 @@ def calculate_single_question_score(df_item: pd.DataFrame) -> pd.DataFrame:
     df = df_item.copy()
     columns = ['qtype', 'n_answers', 'is_filtered_combobox', 'cascade_from_question_id']
 
-    if any(col not in df.columns for col in columns + [feature_name]):
+    # f__single_question is not a separately computed feature column — scoring works
+    # directly on 'value' with a qtype mask, matching legacy make_score__single_question.
+    if any(col not in df.columns for col in columns):
         return df
     
     # Mask specific for single questions without filter rules bypassing cascades
@@ -677,14 +680,14 @@ def calculate_single_question_score(df_item: pd.DataFrame) -> pd.DataFrame:
     )
 
     df[score_name] = np.nan
-    valid_data = df[single_question_mask]&df[~pd.isnull(df[feature_name])]
+    valid_data = df[single_question_mask].copy()
     if valid_data.empty:
         return df
 
     variables = filter_variable_name_by_frequency(valid_data, 'value', frequency=100, min_unique_values=3)
     
     for var in variables:
-        mask = (df['variable_name'] == var) & single_question_mask & (~pd.isnull(df[feature_name]))
+        mask = (df['variable_name'] == var) & single_question_mask
         if mask.sum() > 0:
             unique_values = df.loc[mask, 'value'].nunique()
 
@@ -709,11 +712,13 @@ def calculate_multi_option_question_score(df_item: pd.DataFrame) -> pd.DataFrame
     feature_name = 'f__multi_option_question'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
-    
-    if any(col not in df.columns for col in ['qtype', feature_name]):
+
+    # f__multi_option_question is not a separately computed feature column — scoring works
+    # directly on 'value' with a qtype mask, matching legacy make_score__multi_option_question.
+    if 'qtype' not in df.columns:
         return df
 
-    multi_question_mask = (df["qtype"] == 'MultyOptionsQuestion') & (~pd.isnull(df[feature_name]))
+    multi_question_mask = (df["qtype"] == 'MultyOptionsQuestion')
     valid_data = df[multi_question_mask].copy()
 
     df[score_name] = np.nan
@@ -763,7 +768,6 @@ def calculate_first_digit_score(df_item: pd.DataFrame) -> pd.DataFrame:
     df[score_name] = np.nan
 
     valid_variables = filter_variables_by_magnitude(valid_data, feature_name, valid_variables, min_order_of_magnitude=3)
-    
     
     # Computes the Jensen divergence for each variable_name and responsible on the first digit distribution.
     # Jensen's divergence returns a value between (0, 1) of how much the first digit distribution
