@@ -387,34 +387,40 @@ def read_microdata_file(data_path: Path, file_name: str) -> pd.DataFrame:
 
 
 def get_microdata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFrame:
+    raw = get_microdata_raw(data_path, df_questionnaires)
+    return merge_microdata_questionnaire(raw, df_questionnaires)
+
+
+def get_microdata_raw(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFrame:
+    """Load microdata with transform_multi applied but without questionnaire metadata merge.
+
+    Performs all processing steps of get_microdata (including multi-question transformation,
+    filtering, column normalisation and value stringification) up to but not including
+    the merge with questionnaire metadata.
+    """
     drop_list = ['interview__key', 'sssys_irnd', 'has__errors', 'interview__status', 'assignment__id']
 
     file_names = get_microdata_file_list(data_path)
 
-    # define multi/list question conditions
     if not df_questionnaires.empty:
-        # Use boolean indexing
         unlinked_mask = (df_questionnaires["qtype"] == 'MultyOptionsQuestion') & (
             df_questionnaires['is_linked'] == False)
         linked_mask = (df_questionnaires["qtype"] == 'MultyOptionsQuestion') & (
             df_questionnaires['is_linked'] == True)
         list_mask = (df_questionnaires["qtype"] == 'TextListQuestion')
         gps_mask = (df_questionnaires["qtype"] == 'GpsCoordinateQuestion')
-        
-        # extract multi/list question lists from conditions
+
         multi_unlinked_vars = df_questionnaires.loc[unlinked_mask, 'variable_name'].tolist()
         multi_linked_vars = df_questionnaires.loc[linked_mask, 'variable_name'].tolist()
         list_vars = df_questionnaires.loc[list_mask, 'variable_name'].tolist()
         gps_vars = df_questionnaires.loc[gps_mask, 'variable_name'].tolist()
-    
-    # Iterate over each file
+
     all_dfs = []
     for file_name in file_names:
         df = read_microdata_file(data_path, file_name)
         if df.empty:
             continue
-            
-        #Efficient drop
+
         cols_to_drop = [col for col in drop_list if col in df.columns]
         if cols_to_drop:
             df.drop(columns=cols_to_drop, inplace=True)
@@ -425,7 +431,6 @@ def get_microdata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFr
             df = transform_multi(df, list_vars, 'list')
             df = transform_multi(df, gps_vars, 'gps')
 
-        # create roster_level from __id columns if on roster level, else '' if main questionnaire file
         roster_ids = [col for col in df.columns if col.endswith("__id") and col != "interview__id"]
         if roster_ids:
             df['roster_level'] = df[roster_ids].apply(lambda row: ",".join(map(str, row)), axis=1)
@@ -435,10 +440,10 @@ def get_microdata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFr
 
         id_vars = ['interview__id', 'roster_level']
         value_vars = [col for col in df.columns if col not in id_vars]
-        
+
         if not value_vars:
             continue
-            
+
         df_long = df.melt(id_vars=id_vars, value_vars=value_vars, var_name='variable', value_name='value')
         df_long['filename'] = file_name
         all_dfs.append(df_long)
@@ -448,41 +453,20 @@ def get_microdata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFr
     else:
         return pd.DataFrame()
 
-    # Filter invalid values
-    # Optimized filter:
-    # Check for empty string or NaN. Note: 'value' column is mixed type probably.
-    # Convert 'value' to string could simplify emptiness check but be careful with NaN
-    
-    # Vectorized check is faster than apply
-    # combined_df['value'] is likely object type
-    
-    # is_valid logic from legacy: 
-    # if list: return True
-    # if string/other: value != '' and notna(value)
-    
-    # Since we can't easily vectorize types check mixed with lists in pandas, use apply only if needed
-    # But usually transform_multi returns lists for some columns.
-    
     def is_valid_fast(val):
         if val is None: return False
-        if isinstance(val, (list, tuple)): 
+        if isinstance(val, (list, tuple)):
             if len(val) == 0: return False
-            # Filter out lists that contain only NaNs or empty strings
             return any(pd.notna(x) and x != '' for x in val)
         if isinstance(val, (np.ndarray,)): return val.size > 0
         if isinstance(val, str) and val == '': return False
-        # Fallback for other types where equality might be array-like (though unlikely for scalars)
-        if hasattr(val, 'size') and hasattr(val, 'shape'): # duck typing for arrays
-             return val.size > 0
-        
+        if hasattr(val, 'size') and hasattr(val, 'shape'):
+            return val.size > 0
         try:
-             if pd.isna(val): return False
+            if pd.isna(val): return False
         except:
-             pass 
-        
-        # Check for empty string equality safely
+            pass
         if str(val) == '': return False
-        
         return True
 
     combined_df = combined_df[combined_df['value'].apply(is_valid_fast)]
@@ -495,50 +479,49 @@ def get_microdata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFr
     except ValueError:
         logger.warning(f"Could not set version for {data_path.name}")
 
-    if not df_questionnaires.empty:
-        # Merge setup
-        roster_columns = [c for c in combined_df.columns if '__id' in c and c != 'interview__id']
-        
-        # Ensure join keys have matching types
-        # variable, qnr, qnr_version are strings/objects
-        
-        merge_on_left = ['variable', 'qnr', 'qnr_version']
-        merge_on_right = ['variable_name', 'qnr', 'qnr_version']
-        
-        combined_df = combined_df.merge(
-            df_questionnaires, 
-            how='left',
-            left_on=merge_on_left,
-            right_on=merge_on_right
-        )
-        
-        sort_cols = ['interview__id']
-        if 'qnr_seq' in combined_df.columns:
-            sort_cols.append('qnr_seq')
-        sort_cols.extend(roster_columns)
-        
-        # Safe sort (ignore missing cols)
-        actual_sort_cols = [c for c in sort_cols if c in combined_df.columns]
-        combined_df.sort_values(actual_sort_cols, inplace=True)
-
     combined_df.reset_index(drop=True, inplace=True)
     combined_df.columns = [normalize_column_name(c) for c in combined_df.columns]
-    # Normalize float values that are actually integers (e.g. 1.0 -> 1) before string conversion
-    # This ensures "107080102.0" becomes "107080102" matching legacy output
+
     def normalize_and_stringify(val):
         if isinstance(val, float) and val.is_integer():
-             return str(int(val))
+            return str(int(val))
         if isinstance(val, (list, tuple, np.ndarray)):
-             # If it's a list (from transform_multi), we might need to normalize internal floats tool?
-             # Legacy code just did astype(str), which calls str(val).
-             # str([1.0, 2.0]) -> "[1.0, 2.0]"
-             # str([1, 2]) -> "[1, 2]"
-             # So we might need to clean up lists too if we want exact match.
-             # However, let's stick to scalar normalization first as that's the primary complaint.
-             return str(val)
+            return str(val)
         return str(val)
 
-    # Use apply for robust conversion
     combined_df['value'] = combined_df['value'].apply(normalize_and_stringify)
-    
+
     return combined_df
+
+
+def merge_microdata_questionnaire(microdata_raw: pd.DataFrame, df_questionnaires: pd.DataFrame) -> pd.DataFrame:
+    """Merge raw microdata with questionnaire metadata and normalize column names.
+
+    Produces output identical to get_microdata when combined with get_microdata_raw.
+    """
+    if microdata_raw.empty or df_questionnaires.empty:
+        return microdata_raw
+
+    merge_on_left = ['variable', 'qnr', 'qnr_version']
+    merge_on_right = ['variable_name', 'qnr', 'qnr_version']
+
+    merged = microdata_raw.merge(
+        df_questionnaires,
+        how='left',
+        left_on=merge_on_left,
+        right_on=merge_on_right
+    )
+
+    sort_cols = [c for c in ['interview__id', 'qnr_seq', 'roster_level'] if c in merged.columns]
+    merged.sort_values(sort_cols, inplace=True)
+    merged.reset_index(drop=True, inplace=True)
+    merged.columns = [normalize_column_name(c) for c in merged.columns]
+    # Stringify properties dicts so serialisation is consistent regardless of whether
+    # the questionnaire was used from memory (1-step) or via a parquet round-trip (2-step).
+    # Pyarrow's struct union type adds extra None keys during the parquet round-trip;
+    # stringifying here prevents that discrepancy from propagating into the microdata output.
+    if 'properties' in merged.columns:
+        merged['properties'] = merged['properties'].apply(
+            lambda x: str(x) if isinstance(x, dict) else x
+        )
+    return merged

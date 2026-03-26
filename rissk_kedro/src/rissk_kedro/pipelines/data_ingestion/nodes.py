@@ -8,7 +8,8 @@ from rissk.utils.import_utils_kedro import (
     get_survey_info, 
     get_questionnaire, 
     get_paradata, 
-    get_microdata
+    get_microdata_raw,
+    merge_microdata_questionnaire
 )
 
 
@@ -125,40 +126,43 @@ def load_questionnaire_node(file_paths: List[Path]) -> pd.DataFrame:
     
     if 'answer_sequence' in combined_df.columns:
         combined_df['answer_sequence'] = combined_df['answer_sequence'].apply(str)
+    if 'properties' in combined_df.columns:
+        combined_df['properties'] = combined_df['properties'].apply(
+            lambda x: str(x) if isinstance(x, dict) else x
+        )
         
     return combined_df
 
 
-def load_microdata_node(file_paths: List[Path]) -> pd.DataFrame:
+def load_raw_microdata_node(file_paths: List[Path]) -> pd.DataFrame:
     """
-    Loads microdata (answers) from extracted folders.
-    Independent node that generates its own questionnaire reference.
+    Loads raw microdata (answers) from extracted folders.
+    Applies multi-question transformation using questionnaire metadata but does not
+    merge questionnaire columns into the output. Values are normalized and stringified.
     """
-    logger.info(f"Processing microdata for {len(file_paths)} paths")
+    logger.info(f"Processing raw microdata for {len(file_paths)} paths")
     survey_info = get_survey_info(file_paths)
-    
+
     dfs_microdata = []
-    
+
     for survey_questionnaire, questionnaires_details in survey_info.items():
-        for questionnaires_version, file_paths in questionnaires_details.items():
-            tabular_path = file_paths.get('Tabular')
+        for questionnaires_version, file_paths_detail in questionnaires_details.items():
+            tabular_path = file_paths_detail.get('Tabular')
 
             if not tabular_path:
                 logger.warning(
-                    f"Skipping microdata load for {survey_questionnaire} v{questionnaires_version}: "
+                    f"Skipping raw microdata load for {survey_questionnaire} v{questionnaires_version}: "
                     "missing Tabular export"
                 )
                 continue
 
             try:
-                # We need the questionnaire map for variable types and structure
                 df_questionnaires = get_questionnaire(tabular_path)
-                df_microdata = get_microdata(tabular_path, df_questionnaires)
-                
+                df_microdata = get_microdata_raw(tabular_path, df_questionnaires)
                 dfs_microdata.append(df_microdata)
-                logger.info(f"Loaded microdata for {survey_questionnaire} v{questionnaires_version}")
+                logger.info(f"Loaded raw microdata for {survey_questionnaire} v{questionnaires_version}")
             except Exception as e:
-                logger.error(f"Failed to load microdata for {survey_questionnaire} v{questionnaires_version}. Skipping. Error: {str(e)}")
+                logger.error(f"Failed to load raw microdata for {survey_questionnaire} v{questionnaires_version}. Skipping. Error: {str(e)}")
                 continue
 
     if not dfs_microdata:
@@ -166,8 +170,14 @@ def load_microdata_node(file_paths: List[Path]) -> pd.DataFrame:
 
     combined_df = pd.concat(dfs_microdata)
     combined_df.reset_index(drop=True, inplace=True)
-    
-    if 'answer_sequence' in combined_df.columns:
-        combined_df['answer_sequence'] = combined_df['answer_sequence'].apply(str)
-        
     return combined_df
+
+
+def merge_microdata_questionnaire_node(raw_microdata: pd.DataFrame, questionnaire: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merges raw microdata with questionnaire metadata and normalizes column names.
+    """
+    logger.info("Merging raw microdata with questionnaire metadata")
+    merged = merge_microdata_questionnaire(raw_microdata, questionnaire)
+    merged.reset_index(drop=True, inplace=True)
+    return merged

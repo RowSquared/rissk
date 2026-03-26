@@ -17,7 +17,7 @@ def create_pipeline(**kwargs) -> Pipeline:
     return pipeline([
         node(
             func=create_base_item_table_node,
-            inputs=["raw_microdata", "paradata_processed", "parameters"],
+            inputs=["microdata", "paradata_processed", "parameters"],
             # Legacy test data:
             # inputs=["legacy_microdata", "legacy_paradata_processed", "parameters"],
             outputs="item_features_base",

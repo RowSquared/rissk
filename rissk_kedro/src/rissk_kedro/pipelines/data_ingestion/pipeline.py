@@ -4,7 +4,8 @@ from .nodes import (
     filter_extracted_survey_paths_node,
     load_paradata_node, 
     load_questionnaire_node, 
-    load_microdata_node
+    load_raw_microdata_node,
+    merge_microdata_questionnaire_node
 )
 # catalog for path
 def create_pipeline(**kwargs) -> Pipeline:
@@ -41,9 +42,15 @@ def create_pipeline(**kwargs) -> Pipeline:
             name="load_questionnaire_node"
         ),
         node(
-            func=load_microdata_node,
+            func=load_raw_microdata_node,
             inputs="file_paths",
             outputs="raw_microdata",
-            name="load_microdata_node"
+            name="load_raw_microdata_node"
+        ),
+        node(
+            func=merge_microdata_questionnaire_node,
+            inputs=["raw_microdata", "raw_questionnaire"],
+            outputs="microdata",
+            name="merge_microdata_questionnaire_node"
         )
     ])
