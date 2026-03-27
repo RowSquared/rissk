@@ -302,7 +302,7 @@ def create_base_item_table(microdata: pd.DataFrame, paradata_full: pd.DataFrame,
     columns = ['value', "qtype", 'is_integer', 'qnr_seq',
                'n_answers', 'answer_sequence', 
                'cascade_from_question_id', 'is_filtered_combobox',
-               'index_col'] + item_level_columns
+               'index_col', 'qnr', 'qnr_version'] + item_level_columns
     
     # Intersect with available columns to avoid KeyErrors
     df_item = df_item[columns].copy()
@@ -530,7 +530,10 @@ def feat_answer_removed(paradata_full):
         return df_removed
 
     # Align grouping grain with legacy helper exactly.
+    # qnr and qnr_version are included so removed_answers carries questionnaire
+    # identity for per-questionnaire filtering downstream.
     group_cols = ['interview__id', 'responsible', 'variable_name', 'qnr_seq']
+    extra_cols = [c for c in ['qnr', 'qnr_version'] if c in df_removed.columns]
     if any(c not in df_removed.columns for c in group_cols):
         logger.warning(
             "%s: missing one or more legacy group columns (%s); skipping feature.",
@@ -539,7 +542,7 @@ def feat_answer_removed(paradata_full):
         )
         return df_removed
 
-    df_agg_removed = df_removed.groupby(group_cols).agg(
+    df_agg_removed = df_removed.groupby(group_cols + extra_cols).agg(
         f__answer_removed=('order', 'count')
     ).reset_index()
 

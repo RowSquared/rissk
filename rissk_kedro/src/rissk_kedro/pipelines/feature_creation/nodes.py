@@ -63,3 +63,37 @@ def build_removed_answers_node(
     the rissk_scoring pipeline to score s__answer_removed at unit level.
     """
     return feat_answer_removed(paradata_full)
+
+
+def make_qnr_filter(qnr_name: str):
+    """Factory that returns a filter function scoped to a single questionnaire.
+
+    All three feature tables (item_features, unit_features, removed_answers) carry
+    a ``qnr`` column and are filtered directly on it.  If ``removed_answers`` was
+    produced before the qnr column was added a fallback filter by interview__id is
+    applied automatically.
+    """
+    def filter_features(
+        item_features: pd.DataFrame,
+        unit_features: pd.DataFrame,
+        removed_answers: pd.DataFrame,
+    ):
+        unit_filtered = unit_features[unit_features['qnr'] == qnr_name].copy()
+        item_filtered = item_features[item_features['qnr'] == qnr_name].copy()
+        if removed_answers is not None and not removed_answers.empty:
+            if 'qnr' in removed_answers.columns:
+                removed_filtered = removed_answers[removed_answers['qnr'] == qnr_name].copy()
+            else:
+                # fallback: removed_answers pre-dates the qnr column addition
+                valid_ids = set(unit_filtered['interview__id'])
+                removed_filtered = removed_answers[removed_answers['interview__id'].isin(valid_ids)].copy()
+        else:
+            removed_filtered = pd.DataFrame()
+        logger.info(
+            "filter_features_%s: %d interviews, %d item rows, %d removed_answer rows",
+            qnr_name, len(unit_filtered), len(item_filtered), len(removed_filtered),
+        )
+        return item_filtered, unit_filtered, removed_filtered
+
+    filter_features.__name__ = f"filter_features_{qnr_name}"
+    return filter_features

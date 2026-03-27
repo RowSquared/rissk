@@ -28,6 +28,10 @@ raw_questionnaire:
 
 raw_microdata:
   type: pandas.ParquetDataset
+  filepath: data/${globals:survey.name}/latest/20_INTERIM/microdata_raw.parquet
+
+microdata:
+  type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/microdata.parquet
 
 # === FEATURE ENGINEERING DataFrames ===
