@@ -87,38 +87,6 @@ def filter_columns(
 
     return index_col + keep_columns, drop_columns
 
-def get_clean_pivot_table(
-    df_item: pd.DataFrame,
-    feature_name: str,
-    remove_low_freq_col: bool = True,
-    filter_conditions=None,
-    threshold: int = 100,
-    min_unique_values: int = 3,
-) -> Tuple[pd.DataFrame, List[str]]:
-    """Create a pivot table handling columns and filtering."""
-    index_col = ['interview__id', 'roster_level', 'responsible']
-    data = df_item.copy()
-    
-    if filter_conditions is not None:
-        data = data.loc[filter_conditions]
-        
-    data = pd.pivot_table(data=data, index=index_col, columns='variable_name',
-                          values=feature_name, fill_value=np.nan)
-    data = data.reset_index()
-    
-    if data.columns.nlevels > 1:
-        data.columns = [f'{col[0]}_{col[1]}'.rstrip('_') for col in data.columns]
-        
-    index_col = [col for col in index_col if col in data.columns]
-    keep_columns, drop_columns = filter_columns(
-        data, index_col, threshold=threshold, min_unique_values=min_unique_values
-    )
-    
-    if remove_low_freq_col:
-       data = data[keep_columns].copy()
-       
-    return data, index_col
-
 
 # --- SCORING FUNCTIONS BEGIN --- 
 
@@ -126,10 +94,12 @@ def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd
     df = df_item.copy()
     score_cols = ['s__gps_proximity_counts', 's__gps_outlier', 's__gps_extreme_outlier']
     required_columns = ['f__gps_latitude', 'f__gps_longitude', 'f__gps_accuracy']
-    index_col = ['interview__id', 'roster_level', 'responsible']
+    # variable_name is included so rows from different GPS questions remain distinct
+    # when multiple GPS variables exist for the same (interview, roster, responsible)
+    index_col = ['interview__id', 'roster_level', 'responsible', 'variable_name']
 
     # If required GPS columns are missing, return original df
-    if any(col not in df.columns for col in required_columns):
+    if any(col not in df.columns for col in required_columns + ['variable_name']):
         return df
 
     gps_mask = (~pd.isnull(df['f__gps_latitude'])) & (~pd.isnull(df['f__gps_longitude']))
@@ -138,17 +108,10 @@ def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd
             df[col] = np.nan
         return df
 
-    # Aggregate to one row per interview by averaging GPS columns across all GPS
-    # variable_names, matching the legacy pivot_table(aggfunc='mean') behaviour.
-    # When a questionnaire has multiple GPS questions this produces a mean
-    # coordinate; for single-GPS questionnaires the result is identical to the
-    # raw value. (This mirrors legacy pivot semantics where duplicates are
-    # collapsed by mean so spatial comparisons are one point per interview.)
-    data = (
-        df.loc[gps_mask, index_col + required_columns]
-        .groupby(index_col, as_index=False)[required_columns]
-        .mean()
-    )
+    # Keep each (interview, variable_name) as a separate GPS point so that
+    # questionnaires with multiple GPS variables pool all their points together
+    # for the outlier model without collapsing coordinates by mean.
+    data = df.loc[gps_mask, index_col + required_columns].copy()
 
     # Everything that has 0,0 as coordinates is considered an extreme outlier
     # (devices sometimes report 0,0 when a fix failed); mark these explicitly
@@ -217,7 +180,7 @@ def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd
         # model (a planar approximation). For larger geographic extents consider
         # switching to ['x','y','z'] or a geodesic distance measure.
         coords_columns = ['x', 'y']
-        
+
         # USE COF if dataset has less than 10000 samples else use LOF
         if data.loc[mask].shape[0] < 10000:
             model = COF(contamination=contamination)
@@ -753,7 +716,7 @@ def calculate_multi_option_question_score(df_item: pd.DataFrame) -> pd.DataFrame
     return df
 
 def calculate_first_digit_score(df_item: pd.DataFrame) -> pd.DataFrame:
-    feature_name = 'f__numeric_response'
+    feature_name = 'f__first_digit'
     score_name = 's__first_digit'
     df = df_item.copy()
 
@@ -763,7 +726,7 @@ def calculate_first_digit_score(df_item: pd.DataFrame) -> pd.DataFrame:
         df[score_name] = np.nan
         return df
 
-    valid_data = df[~pd.isnull(df[feature_name])]
+    valid_data = df[~pd.isnull(df[feature_name])].copy()
     valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=3)
     df[score_name] = np.nan
 

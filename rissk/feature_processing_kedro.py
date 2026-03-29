@@ -409,7 +409,7 @@ def feat_numeric_response(df_item, **kwargs):
     feature_name = 'f__numeric_response'
     # Use the same mask as legacy: excludes empty, null, and -999999999
     # filter_answer_values=True would exclude values that match the answer options (legacy did not apply this filter)
-    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=False)
+    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=True)
     df_item[feature_name] = np.nan
     if numeric_mask.any():
         numeric_values = _coerce_numeric_with_warning(df_item, numeric_mask, feature_name)
@@ -421,7 +421,7 @@ def feat_first_digit(df_item, **kwargs):
     feature_name = 'f__first_digit'
     # Use the same mask as legacy: excludes empty, null, and -999999999
     # filter_answer_values=True would exclude values that match the answer options (legacy did not apply this filter)
-    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=False)
+    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=True)
     df_item[feature_name] = pd.NA
     if numeric_mask.any():
         numeric_values = _coerce_numeric_with_warning(df_item, numeric_mask, feature_name)
@@ -435,7 +435,7 @@ def feat_last_digit(df_item, **kwargs):
     feature_name = 'f__last_digit'
     # Use the same mask as legacy: excludes empty, null, and -999999999
     # filter_answer_values=True would exclude values that match the answer options (legacy did not apply this filter)
-    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=False)
+    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=True)
     df_item[feature_name] = pd.NA
 
     if numeric_mask.any():
@@ -451,8 +451,10 @@ def feat_last_digit(df_item, **kwargs):
 def feat_first_decimal(df_item, **kwargs):
     # f__first_decimal, first decimal digit if numeric question else empty pd.NA
     feature_name = 'f__first_decimal'
-    # mask: not integer and not empty
-    mask = (df_item['is_integer'] == False) & (df_item['value'] != '')
+    # mask: not integer, not empty & not mumeric sentinel
+    numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=True)
+    mask_integer = (df_item['is_integer'] == False) & (df_item['value'] != '') & (~pd.isnull(df_item['value']))
+    mask = numeric_mask & mask_integer
     df_item[feature_name] = pd.NA
     
     if mask.any():
