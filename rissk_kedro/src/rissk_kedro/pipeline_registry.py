@@ -7,7 +7,7 @@ import pandas as pd
 import yaml
 from kedro.pipeline import Pipeline, node, pipeline
 
-from rissk_kedro.pipelines.feature_creation.nodes import make_qnr_filter
+from rissk_kedro.pipelines.feature_creation.nodes import make_qnr_filter, make_consent_filter
 
 
 def _load_questionnaire_names() -> list[str]:
@@ -22,6 +22,18 @@ def _load_questionnaire_names() -> list[str]:
         globals_data = yaml.safe_load(fh)
     questionnaires = globals_data.get("survey", {}).get("questionnaires", [])
     return [q["name"] for q in questionnaires]
+
+
+def _load_questionnaires() -> list[dict]:
+    """Return the full list of questionnaire config dicts from conf/base/globals.yml.
+
+    Each dict may contain ``name``, ``VERSION``, and the optional
+    ``filter_var`` consent-filter setting.
+    """
+    globals_path = Path(__file__).parents[2] / "conf" / "base" / "globals.yml"
+    with globals_path.open() as fh:
+        globals_data = yaml.safe_load(fh)
+    return globals_data.get("survey", {}).get("questionnaires", [])
 
 
 def _make_merge_node(
@@ -63,7 +75,7 @@ def register_pipelines() -> dict[str, Pipeline]:
     from rissk_kedro.pipelines.feature_creation import create_pipeline as feature_creation_pipeline
     from rissk_kedro.pipelines.rissk_scoring import create_pipeline as scoring_pipeline
 
-    qnr_names = _load_questionnaire_names()
+    questionnaires = _load_questionnaires()
 
     # ------------------------------------------------------------------ #
     # Per-questionnaire filter + scoring pipelines                        #
@@ -74,28 +86,54 @@ def register_pipelines() -> dict[str, Pipeline]:
     unit_score_datasets: list[str] = []
     resp_score_datasets: list[str] = []
 
-    for qnr_name in qnr_names:
+    for qnr_config in questionnaires:
+        qnr_name = qnr_config["name"]
+        # filter_var: dict like {variable_name: answer_value}, or None to skip.
+        filter_var = qnr_config.get("filter_var", None)
+
         # Sanitise the questionnaire name so it is a valid Python identifier /
         # Kedro namespace component (spaces -> underscores, etc.).
         ns = qnr_name.replace(" ", "_").replace("-", "_")
 
-        # -- Filter node --------------------------------------------------
+        # -- Questionnaire filter node ------------------------------------
+        # Outputs use a _qnr__ suffix so the consent filter can write the
+        # canonical __{ns} names consumed by the scoring pipeline below.
         filter_node = node(
             func=make_qnr_filter(qnr_name),
             inputs=["item_features", "unit_features", "removed_answers"],
+            outputs=[
+                f"item_features_qnr__{ns}",
+                f"unit_features_qnr__{ns}",
+                f"removed_answers_qnr__{ns}",
+            ],
+            name=f"filter_features_{ns}_node",
+        )
+
+        # -- Consent filter node ------------------------------------------
+        # When filter_var is None the function is a pass-through. When set,
+        # it drops interviews that lack the required consent answer and emits
+        # a WARNING so the operator knows filtering is active.
+        consent_filter_node = node(
+            func=make_consent_filter(qnr_name, filter_var),
+            inputs=[
+                f"item_features_qnr__{ns}",
+                f"unit_features_qnr__{ns}",
+                f"removed_answers_qnr__{ns}",
+                "paradata_processed",
+            ],
             outputs=[
                 f"item_features__{ns}",
                 f"unit_features__{ns}",
                 f"removed_answers__{ns}",
             ],
-            name=f"filter_features_{ns}_node",
+            name=f"filter_consent_{ns}_node",
         )
 
         # -- Namespaced scoring pipeline ----------------------------------
         # Explicit input/output mappings override namespacing for those keys so
-        # the filter outputs wire directly and the final scored dfs get unique names.
-        # parameters must be passed via the dedicated `parameters` arg — Kedro
-        # raises PipelineError if they appear in `inputs`.
+        # the consent-filter outputs wire directly and the final scored dfs get
+        # unique names.  parameters must be passed via the dedicated `parameters`
+        # arg — Kedro raises PipelineError if they appear in `inputs`.
         namespaced_scoring = pipeline(
             scoring_pipeline(),
             namespace=ns,
@@ -116,7 +154,7 @@ def register_pipelines() -> dict[str, Pipeline]:
         unit_score_datasets.append(f"unit_risk_scores__{ns}")
         resp_score_datasets.append(f"responsible_scores__{ns}")
 
-        qnr_pipeline = Pipeline([filter_node]) + namespaced_scoring
+        qnr_pipeline = Pipeline([filter_node, consent_filter_node]) + namespaced_scoring
         per_qnr_pipelines[f"scoring_{ns}"] = qnr_pipeline
 
     # ------------------------------------------------------------------ #
@@ -143,7 +181,7 @@ def register_pipelines() -> dict[str, Pipeline]:
     pipelines["data_ingestion"] = ingestion
     pipelines["feature_engineering"] = feat_eng
     pipelines["feature_creation"] = feat_creation
-    pipelines["scoring"] = all_scoring   # filter + score + merge; skips ingestion/feature creation
+    pipelines["rissk_scoring"] = all_scoring   # filter + score + merge; skips ingestion/feature creation
 
     # Individual per-questionnaire scoring (without merge) — useful for debugging
     for name, p in per_qnr_pipelines.items():

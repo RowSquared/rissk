@@ -48,19 +48,19 @@ def process_paradata_node(
     paradata.sort_values(['interview__id', 'order'], inplace=True)
     paradata.reset_index(drop=True, inplace=True)
     
-    # Limit Unit Logic
-    limit_unit = parameters.get('processing', {}).get('limit_unit')
-    if limit_unit is not None:
-        consent_variable = next(iter(limit_unit))
-        consent_value = str(limit_unit[consent_variable])
+    # # Limit Unit Logic
+    # limit_unit = parameters.get('processing', {}).get('limit_unit')
+    # if limit_unit is not None:
+    #     consent_variable = next(iter(limit_unit))
+    #     consent_value = str(limit_unit[consent_variable])
         
-        cond1 = (paradata['variable_name'] == consent_variable)
-        cond2 = (paradata['answer'] == consent_value)
+    #     cond1 = (paradata['variable_name'] == consent_variable)
+    #     cond2 = (paradata['answer'] == consent_value)
         
-        filtered_interview_id = paradata[cond1 & cond2]['interview__id'].unique()
-        paradata = paradata[paradata['interview__id'].isin(filtered_interview_id)].copy()
+    #     filtered_interview_id = paradata[cond1 & cond2]['interview__id'].unique()
+    #     paradata = paradata[paradata['interview__id'].isin(filtered_interview_id)].copy()
     
-    return paradata
+    # return paradata
 
 
 def filter_active_paradata_node(

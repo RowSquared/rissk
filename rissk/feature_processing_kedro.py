@@ -1,3 +1,4 @@
+import math
 import pandas as pd
 import numpy as np
 import ast
@@ -36,6 +37,7 @@ def get_numeric_mask(df_item: pd.DataFrame, filter_answer_values: bool) -> pd.Se
     if filter_answer_values:
         answer_mask = _is_answer_value(df_item['value'], df_item['answer_sequence'])
         mask &= ~answer_mask
+
     return mask
 
 
@@ -425,9 +427,15 @@ def feat_first_digit(df_item, **kwargs):
     df_item[feature_name] = pd.NA
     if numeric_mask.any():
         numeric_values = _coerce_numeric_with_warning(df_item, numeric_mask, feature_name)
-        # Take absolute value, convert to string, extract first character
-        vals = numeric_values.abs().astype(str).str[0]
-        df_item.loc[numeric_mask, feature_name] = pd.to_numeric(vals, errors='coerce').astype('Int64')
+        # Extract first significant digit using log10 (correct for values in (0,1))
+        def _first_significant_digit(val):
+            val = abs(val)
+            if val == 0:
+                return 0
+            power = math.floor(math.log10(val))
+            return int(val / 10**power)
+        vals = numeric_values.apply(_first_significant_digit)
+        df_item.loc[numeric_mask, feature_name] = pd.array(vals, dtype='Int64')
     return df_item
 
 def feat_last_digit(df_item, **kwargs):

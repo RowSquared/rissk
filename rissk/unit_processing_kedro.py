@@ -4,6 +4,8 @@ import logging
 from typing import List, Dict, Any, Tuple
 from pyod.models.pca import PCA
 from pyod.models.iforest import IForest
+from pyod.models.ecod import ECOD
+from rissk.item_processing_kedro import get_contamination_parameter
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, normalize
 
 logger = logging.getLogger(__name__)
@@ -130,8 +132,6 @@ def aggregate_item_to_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.Data
 
 def calculate_unit_level_scores(df_unit: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
     """Calculate scores that are purely derived from unit-level features."""
-    from pyod.models.ecod import ECOD
-    from rissk.item_processing_kedro import get_contamination_parameter
     df = df_unit.copy()
     
     if 'f__time_changed' in df.columns:

@@ -68,9 +68,12 @@ def get_digit_frequecies(df, feature_name, apply_first_digit, minimum_sample=50)
 
 
 def first_digit(val):
-    """Extract the first digit from a value."""
+    """Extract the first significant digit from a value using log10."""
     val = abs(val)
-    return int(str(val)[0])
+    if val == 0:
+        return 0
+    power = math.floor(math.log10(val))
+    return int(val / 10**power)
 
 
 def last_digit(val):
@@ -157,18 +160,26 @@ def get_outlier_z_score(data, column_name, threshold=2.5):
 
 
 def filter_variables_by_magnitude(df, feature_name, variables, min_order_of_magnitude=3):
+    """Return variables whose nonzero absolute values span at least `min_order_of_magnitude` orders.
+
+    Zeros are excluded because they are not part of the Benford domain and would
+    anchor min_magnitude at 0, distorting the apparent range.  Negative values are
+    treated by absolute value: using raw min/max with sign inversion would reverse
+    the comparison for all-negative series (e.g. min=-1000, max=-0.01 would give
+    magnitude(max) - magnitude(min) = -2 - 3 = -5, always failing).
+    """
     def order_of_magnitude(num):
-        if num == 0:
-            return 0
-        elif num < 0:
-            num = -num
+        # num is guaranteed positive (abs applied by caller)
         return int(math.floor(math.log10(num)))
 
     valid_variables = []
     for var in variables:
         var_values = df[df['variable_name'] == var][feature_name]
-        max_magnitude = order_of_magnitude(var_values.max())
-        min_magnitude = order_of_magnitude(var_values.min())
+        nonzero_abs = var_values[var_values != 0].abs()
+        if nonzero_abs.empty:
+            continue
+        max_magnitude = order_of_magnitude(nonzero_abs.max())
+        min_magnitude = order_of_magnitude(nonzero_abs.min())
         if max_magnitude - min_magnitude >= min_order_of_magnitude:
             valid_variables.append(var)
     return valid_variables

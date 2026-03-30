@@ -13,7 +13,7 @@ from rissk.utils.stats_utils_kedro import (
     calculate_entropy,
     calculate_list_entropy,
     filter_variables_by_magnitude,
-    apply_benford_tests
+    apply_benford_tests,
 )
 from rissk.detection_algorithms_kedro import lat_lon_to_cartesian
 
@@ -716,22 +716,32 @@ def calculate_multi_option_question_score(df_item: pd.DataFrame) -> pd.DataFrame
     return df
 
 def calculate_first_digit_score(df_item: pd.DataFrame) -> pd.DataFrame:
-    feature_name = 'f__first_digit'
+    feature_name = 'f__numeric_response'
+    first_digit_feature = 'f__first_digit'
     score_name = 's__first_digit'
     df = df_item.copy()
 
-    if feature_name not in df.columns:
+    if feature_name not in df.columns or first_digit_feature not in df.columns:
         return df
-    if df[feature_name].dropna().empty:
+    if df[feature_name].dropna().empty or df[first_digit_feature].dropna().empty:
         df[score_name] = np.nan
         return df
 
     valid_data = df[~pd.isnull(df[feature_name])].copy()
-    valid_variables = filter_variable_name_by_frequency(valid_data, feature_name, frequency=100, min_unique_values=3)
     df[score_name] = np.nan
 
-    valid_variables = filter_variables_by_magnitude(valid_data, feature_name, valid_variables, min_order_of_magnitude=3)
-    
+    # f__first_digit is already computed by the feature pipeline and is NA for zeros
+    # and nulls, so filter_variable_name_by_frequency applied to it naturally restricts
+    # frequency and uniqueness counts to the nonzero Benford-eligible population.
+    # No need to recompute first digits here — f__numeric_response is only needed for
+    # the magnitude range check and for apply_benford_tests.
+    valid_variables = filter_variable_name_by_frequency(
+        df, first_digit_feature, frequency=100, min_unique_values=3
+    )
+
+    benford_data = valid_data[valid_data[feature_name] != 0].copy()
+    valid_variables = filter_variables_by_magnitude(benford_data, feature_name, valid_variables, min_order_of_magnitude=3)
+
     # Computes the Jensen divergence for each variable_name and responsible on the first digit distribution.
     # Jensen's divergence returns a value between (0, 1) of how much the first digit distribution
     # of specific responsible is similar to the first digit distribution of all others.
@@ -740,7 +750,7 @@ def calculate_first_digit_score(df_item: pd.DataFrame) -> pd.DataFrame:
     # who have at least 50 records.
     # Once it is calculated, values that diverge from more than 50% from the median value get marked as "anomalous."
     benford_jensen_df = apply_benford_tests(
-        valid_data, valid_variables, 'responsible', feature_name, apply_first_digit=True, minimum_sample=50
+        benford_data, valid_variables, 'responsible', feature_name, apply_first_digit=True, minimum_sample=50
     )
         
     if not benford_jensen_df.empty:
