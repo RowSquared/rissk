@@ -65,7 +65,18 @@ def calculate_global_score(df_unit_scores: pd.DataFrame, df_resp_scores: pd.Data
         return df_unit
 
     df = df_unit[available_cols].copy()
-    df = pd.DataFrame(scaler.fit_transform(df), columns=available_cols)
+
+    # Drop constant columns before StandardScaler — a constant column produces NaN after
+    # z-scoring (division by zero std), which would make IForest scores meaningless and
+    # MinMaxScaler produce NaN unit_risk_score for every interview.
+    # This mirrors legacy's `nunique() > 1` filter in df_unit_score.
+    varying_cols = [c for c in available_cols if df[c].nunique() > 1]
+    if not varying_cols:
+        logger.warning("All score columns are constant — cannot compute meaningful global risk score.")
+        return df_unit
+
+    df = df[varying_cols]
+    df = pd.DataFrame(scaler.fit_transform(df), columns=varying_cols)
     
     model = IForest(random_state=42)
     model.fit(df.fillna(0))
@@ -79,12 +90,23 @@ def calculate_global_score(df_unit_scores: pd.DataFrame, df_resp_scores: pd.Data
     # Scale to 0-100
     df_unit['unit_risk_score'] = scaler.fit_transform(df_unit[['unit_risk_score']])
 
-    # Merge unit score with responsible score
+    # Merge unit score with responsible score.
+    # Only apply the multiplication when responsible_score has actual variance — if PCA
+    # on the responsible-level scores couldn't run (too few enumerators or all scores
+    # constant), responsible_score is all-zero, and multiplying produces a constant-zero
+    # column that MinMaxScaler turns into NaN for every interview.
     if combine_resp_score and 'responsible' in df_unit.columns and df_resp_scores is not None and 'responsible_score' in df_resp_scores.columns:
-        df_resp_map = df_resp_scores.set_index('responsible')['responsible_score'].to_dict()
-        df_unit['responsible_score'] = df_unit['responsible'].map(df_resp_map).fillna(0)
-        df_unit['unit_risk_score'] = df_unit['unit_risk_score'] * df_unit['responsible_score']
-        df_unit['unit_risk_score'] = scaler.fit_transform(df_unit[['unit_risk_score']])
+        resp_score_series = df_resp_scores['responsible_score']
+        if resp_score_series.nunique() > 1:
+            df_resp_map = df_resp_scores.set_index('responsible')['responsible_score'].to_dict()
+            df_unit['responsible_score'] = df_unit['responsible'].map(df_resp_map).fillna(0)
+            df_unit['unit_risk_score'] = df_unit['unit_risk_score'] * df_unit['responsible_score']
+            df_unit['unit_risk_score'] = scaler.fit_transform(df_unit[['unit_risk_score']])
+        else:
+            logger.warning(
+                "responsible_score has no variance (likely too few enumerators or all scores constant); "
+                "skipping responsible-score multiplication to preserve interview-level unit_risk_score."
+            )
 
     return df_unit
 

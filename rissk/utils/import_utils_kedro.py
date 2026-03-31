@@ -7,10 +7,11 @@ import os
 import zipfile
 import shutil
 import json  # Added json import
+import logging
 import pandas as pd  # Added pandas import
 import numpy as np   # Added numpy import
 
-from loguru import logger
+logger = logging.getLogger(__name__)
 
 from rissk.utils.file_process_utils_kedro import (
     get_file_parts, 

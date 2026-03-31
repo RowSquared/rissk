@@ -1,7 +1,9 @@
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+import logging
 import pandas as pd
-from loguru import logger
+
+logger = logging.getLogger(__name__)
 from rissk.utils.import_utils_kedro import (
     extract_zip, 
     filter_matching_folders,

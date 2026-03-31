@@ -148,5 +148,20 @@ def calculate_unit_scores(
         combine_resp_score=True,
         restricted_columns=restricted_columns
     )
-    
+
+    # 6. Merge responsible-level s__ columns back onto unit output.
+    # Legacy save() merges _df_resp (which holds s__single_question,
+    # s__multi_option_question, s__answer_position, s__first_digit) back
+    # onto _df_unit by responsible so those scores appear in the feature CSV.
+    resp_s_cols = [c for c in df_resp_scored.columns if c.startswith('s__')]
+    if resp_s_cols and 'responsible' in df_resp_scored.columns and not df_resp_scored.empty:
+        # Only bring in columns not already present at unit level
+        new_resp_cols = [c for c in resp_s_cols if c not in df_final_unit.columns]
+        if new_resp_cols:
+            df_final_unit = df_final_unit.merge(
+                df_resp_scored[['responsible'] + new_resp_cols],
+                on='responsible',
+                how='left'
+            )
+
     return df_final_unit, df_resp_scored

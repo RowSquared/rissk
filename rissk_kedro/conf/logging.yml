@@ -36,8 +36,9 @@ loggers:
   kedro:
     level: INFO
 
-  pyspark_spaceflights:
+  rissk:
     level: INFO
 
 root:
   handlers: [rich, info_file_handler]
+  level: INFO

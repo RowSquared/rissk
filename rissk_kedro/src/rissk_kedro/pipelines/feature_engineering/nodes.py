@@ -1,8 +1,10 @@
 """Nodes for processing paradata and building features."""
+import logging
 import pandas as pd
 import numpy as np
 from typing import Dict
-from loguru import logger
+
+logger = logging.getLogger(__name__)
 
 from rissk.feature_processing_kedro import make_index_col
 
@@ -60,7 +62,7 @@ def process_paradata_node(
     #     filtered_interview_id = paradata[cond1 & cond2]['interview__id'].unique()
     #     paradata = paradata[paradata['interview__id'].isin(filtered_interview_id)].copy()
     
-    # return paradata
+    return paradata
 
 
 def filter_active_paradata_node(
