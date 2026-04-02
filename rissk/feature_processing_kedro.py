@@ -4,18 +4,17 @@ import numpy as np
 import ast
 import logging
 
+from rissk.utils.stats_utils_kedro import first_digit
+
 logger = logging.getLogger(__name__)
 
 # --- Helper Functions ---
 
 def make_index_col(df: pd.DataFrame) -> pd.DataFrame:
     """Creates a unique index column based on interview_id, variable_name, and roster_level."""
-    # Filter out columns with NaN and empty strings for the mask
-    # Using fillna('') to handle NaNs safely for string concatenation
-    
-    # Create mask for valid rows (not null and not empty string in key columns)
-    # Note: In Py3.13/Pandas 2.x, strict comparison rules apply.
-    
+    # fillna('') normalises NaN roster_level (non-roster items) and NaN variable_name
+    # to empty string before concatenation, matching legacy make_index_col behaviour.
+    # Trailing/leading underscores are stripped so non-roster items don't get a trailing '_'.
     df_temp = df[['interview__id', 'variable_name', 'roster_level']].fillna('').astype(str)
     
     # Concatenate columns
@@ -78,7 +77,7 @@ def _coerce_numeric_with_warning(df_item: pd.DataFrame, numeric_mask: pd.Series,
     values = df_item.loc[numeric_mask, 'value']
     coerced = pd.to_numeric(values, errors='coerce')
 
-    failed_mask = coerced.isna() & values.notna() & (values != '')
+    failed_mask = coerced.isna() & values.notna()
     failed_count = int(failed_mask.sum())
     if failed_count > 0:
         sample_bad_values = values[failed_mask].astype(str).drop_duplicates().head(10).tolist()
@@ -163,8 +162,8 @@ def get_df_sequence(df_paradata_full: pd.DataFrame) -> pd.DataFrame:
     # f__previous_question, f__previous_answer, f__previous_roster
     # Using shift on the group
     df_last['f__previous_question'] = df_last.groupby('interview__id')['variable_name'].shift()
-    df_last['f__previous_answer'] = df_last.groupby('interview__id')['answer'].shift().fillna('')
-    df_last['f__previous_roster'] = df_last.groupby('interview__id')['roster_level'].shift().fillna('')
+    df_last['f__previous_answer'] = df_last.groupby('interview__id')['answer'].shift().fillna(pd.NA)
+    df_last['f__previous_roster'] = df_last.groupby('interview__id')['roster_level'].shift().fillna(pd.NA)
     
     # f__sequence_jump
     # Calculate answer sequence (1, 2, 3...) based on actual occurrence
@@ -204,8 +203,9 @@ def add_item_time_features(df_item: pd.DataFrame, df_time: pd.DataFrame, allowed
     selected_features = [f for f in time_features if f in allowed_features]
     
     if selected_features:
-        # Filter out empty variable_name (Pauses)
-        df_time_filtered = df_time[df_time['variable_name'] != ''].copy()
+        # Filter out pause events (Resumed/Restarted) which have variable_name=NaN in Kedro
+        # (legacy used '' after global fillna(''), but NaN is the correct sentinel here)
+        df_time_filtered = df_time[df_time['variable_name'].notna()].copy()
         # AnswerRemoved / CommentSet events have roster_level=None in paradata (no roster context
         # is recorded on removal/comment events), while AnswerSet rows carry ''. Normalise to ''
         # so they land in the same groupby bucket as the corresponding AnswerSet events, matching
@@ -376,7 +376,7 @@ def create_base_unit_table(paradata_full: pd.DataFrame, parameters: dict) -> pd.
     df_unit.drop_duplicates(inplace=True)
 
     # Filter valid responsible
-    df_unit = df_unit[(df_unit['responsible'] != '') & (df_unit['responsible'].notna())]
+    df_unit = df_unit[df_unit['responsible'].notna()]
 
     pause_features = ['f__pause_count', 'f__pause_duration', 'f__pause_list']
     unit_time_features = ['f__total_duration', 'f__total_elapse', 'f__days_from_start', 'f__time_changed']
@@ -428,14 +428,7 @@ def feat_first_digit(df_item, **kwargs):
     df_item[feature_name] = pd.NA
     if numeric_mask.any():
         numeric_values = _coerce_numeric_with_warning(df_item, numeric_mask, feature_name)
-        # Extract first significant digit using log10 (correct for values in (0,1))
-        def _first_significant_digit(val):
-            val = abs(val)
-            if val == 0:
-                return 0
-            power = math.floor(math.log10(val))
-            return int(val / 10**power)
-        vals = numeric_values.apply(_first_significant_digit)
+        vals = numeric_values.apply(first_digit)
         df_item.loc[numeric_mask, feature_name] = pd.array(vals, dtype='Int64')
     return df_item
 
@@ -462,7 +455,7 @@ def feat_first_decimal(df_item, **kwargs):
     feature_name = 'f__first_decimal'
     # mask: not integer, not empty & not mumeric sentinel
     numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=True)
-    mask_integer = (df_item['is_integer'] == False) & (df_item['value'] != '') & (~pd.isnull(df_item['value']))
+    mask_integer = (df_item['is_integer'] == False) & (~pd.isnull(df_item['value']))
     mask = numeric_mask & mask_integer
     df_item[feature_name] = pd.NA
     
@@ -787,7 +780,6 @@ def feat_unit_number_answered(df_unit, item_features, **kwargs):
         (~pd.isnull(item_features['value'])) &
         (~sentinel_mask) &
         (item_features['value'] != '##N/A##') &
-        (item_features['value'] != '') &
         (item_features['qtype'] != 'Variable')
     )
     df_agg = item_features[mask].groupby('interview__id').agg(

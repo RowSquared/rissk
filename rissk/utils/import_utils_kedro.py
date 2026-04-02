@@ -261,9 +261,13 @@ def read_paradata(survey_path: Path, delimiter='\t') -> pd.DataFrame:
     return df
 
 
-def get_paradata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFrame:
+def get_paradata_raw(data_path: Path) -> pd.DataFrame:
     """
-    Loads and processes a paradata file from the provided path and merges it with the questionnaire dataframe.
+    Loads and parses a raw paradata file from the provided path.
+
+    Performs parameter splitting, timestamp computation, and questionnaire-version
+    tagging, but does NOT merge questionnaire metadata.  Column names are
+    normalised before returning.
     """
     try:
         df_para = read_paradata(data_path, delimiter='\t')
@@ -273,8 +277,6 @@ def get_paradata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFra
 
     if 'parameters' in df_para.columns:
         # split the parameter column
-        # Using n=1 to limit splits is correct
-        # Check if expand=True returns intended shape
         split_param = df_para['parameters'].str.split(r'\|\|', n=1, expand=True)
         if split_param.shape[1] == 2:
              df_para['param'] = split_param[0]
@@ -282,14 +284,14 @@ def get_paradata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFra
         else:
              df_para['param'] = df_para['parameters']
              df_para['answer'] = None
-             
-        if 'answer' in df_para.columns and df_para['answer'].notna().any():     
+
+        if 'answer' in df_para.columns and df_para['answer'].notna().any():
             split_answer = df_para['answer'].str.rsplit(r'||', n=1, expand=True)
             if split_answer.shape[1] == 2:
                  df_para['answer'] = split_answer[0]
                  df_para['roster_level'] = split_answer[1]
             else:
-                 df_para['roster_level'] = None # Or empty string
+                 df_para['roster_level'] = None
 
         if 'timestamp_utc' in df_para.columns and 'tz_offset' in df_para.columns:
             df_para['timestamp_utc'] = pd.to_datetime(df_para['timestamp_utc'])
@@ -306,24 +308,37 @@ def get_paradata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFra
         except ValueError:
             logger.warning(f"Could not parse filename '{data_path.name}' for version info")
 
-        if not df_questionnaires.empty:
-            q_columns = ['qnr_seq', 'variable_name', "qtype", 'question_type',
-                         'answers', 'question_scope',
-                         'yes_no_view', 'is_filtered_combobox',
-                         'is_integer', 'cascade_from_question_id',
-                         'answer_sequence', 'n_answers', 'question_sequence',
-                         'qnr', 'qnr_version']
-            
-            # Ensure columns exist in questionnaire df before selecting
-            q_columns = [c for c in q_columns if c in df_questionnaires.columns]
-
-            # Merge
-            df_para = df_para.merge(df_questionnaires[q_columns], how='left',
-                                    left_on=['param', 'qnr', 'qnr_version'],
-                                    right_on=['variable_name', 'qnr', 'qnr_version'])
-
         # Normalize column names
         df_para.columns = [normalize_column_name(c) for c in df_para.columns]
+
+    return df_para
+
+
+def get_paradata(data_path: Path, df_questionnaires: pd.DataFrame) -> pd.DataFrame:
+    """
+    Loads and processes a paradata file from the provided path and merges it with the questionnaire dataframe.
+
+    This is a backward-compatible wrapper around get_paradata_raw that additionally
+    merges questionnaire metadata columns onto the result.
+    """
+    df_para = get_paradata_raw(data_path)
+
+    if df_para.empty or df_questionnaires.empty:
+        return df_para
+
+    q_columns = ['qnr_seq', 'variable_name', "qtype", 'question_type',
+                 'answers', 'question_scope',
+                 'yes_no_view', 'is_filtered_combobox',
+                 'is_integer', 'cascade_from_question_id',
+                 'answer_sequence', 'n_answers', 'question_sequence',
+                 'qnr', 'qnr_version']
+
+    # Ensure columns exist in questionnaire df before selecting
+    q_columns = [c for c in q_columns if c in df_questionnaires.columns]
+
+    df_para = df_para.merge(df_questionnaires[q_columns], how='left',
+                            left_on=['param', 'qnr', 'qnr_version'],
+                            right_on=['variable_name', 'qnr', 'qnr_version'])
 
     return df_para
 
