@@ -37,6 +37,17 @@ def calculate_item_scores(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> 
     Each scoring function is only executed when its corresponding feature has use: true
     in parameters['features'], matching the feature creation pipeline behaviour.
     """
+    questionnaires = parameters.get('survey', {}).get('questionnaires', [])
+    lines = [
+        "=" * 55,
+        "  RISSK SCORING",
+        "=" * 55,
+        "  Questionnaires:",
+    ]
+    for q in questionnaires:
+        lines.append(f"    • {q['name']}")
+    lines.append("=" * 55)
+    logger.info("\n" + "\n".join(lines))
     logger.info("Calculating Item Scores...")
     features = parameters.get('features', {})
     df_scored = df_item

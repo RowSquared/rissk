@@ -18,9 +18,9 @@ extracted_survey_folders:
     type: rissk_kedro.datasets.PathDataset
 
 # === INGESTED DataFrames ===
-paradata_interim:
+paradata_raw:
   type: pandas.ParquetDataset
-  filepath: data/${globals:survey.name}/latest/20_INTERIM/paradata.parquet
+  filepath: data/${globals:survey.name}/latest/20_INTERIM/paradata_raw.parquet
 
 raw_questionnaire:
   type: pandas.ParquetDataset
@@ -34,36 +34,29 @@ microdata:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/microdata.parquet
 
-# === FEATURE ENGINEERING DataFrames ===
-
 paradata_processed:
   type: pandas.ParquetDataset
   filepath: data/${globals:survey.name}/latest/30_PROCESSED/paradata_processed.parquet
 
-# paradata_active is provided for legacy compatibility. New feature functions may
-# apply question_scope filters inline; legacy code expects this dataset.
-paradata_active:
-  type: pandas.ParquetDataset
-  filepath: data/${globals:survey.name}/latest/30_PROCESSED/paradata_active.parquet
 
 
-# === LEGACY DATA FOR PIPELINE TESTING ===
-# Uncomment these and update pipeline.py inputs to test against legacy-produced data.
+# # === LEGACY DATA FOR PIPELINE TESTING ===
+# # Uncomment these and update pipeline.py inputs to test against legacy-produced data.
 
-legacy_microdata:
-  type: pandas.ParquetDataset
-  filepath: /Users/vanessa/Work/Rowsquared/RISSK/rissk/data/${globals:survey.name}/latest/30_PROCESSED/microdata.parquet
-#
-# # Equivalent to paradata_processed (output of process_paradata_node).
-# # The legacy pipeline saved this as paradata.parquet (not paradata_processed.parquet).
-legacy_paradata_processed:
-  type: pandas.ParquetDataset
-  filepath: /Users/vanessa/Work/Rowsquared/RISSK/rissk/data/${globals:survey.name}/latest/30_PROCESSED/paradata.parquet
-#
-# # Equivalent to paradata_active (output of filter_active_paradata_node).
-legacy_paradata_active:
-  type: pandas.ParquetDataset
-  filepath: /Users/vanessa/Work/Rowsquared/RISSK/rissk/data/${globals:survey.name}/latest/30_PROCESSED/paradata_active.parquet
+# legacy_microdata:
+#   type: pandas.ParquetDataset
+#   filepath: /Users/vanessa/Work/Rowsquared/RISSK/rissk/data/${globals:survey.name}/latest/30_PROCESSED/microdata.parquet
+# #
+# # # Equivalent to paradata_processed (output of process_paradata_node).
+# # # The legacy pipeline saved this as paradata.parquet (not paradata_processed.parquet).
+# legacy_paradata_processed:
+#   type: pandas.ParquetDataset
+#   filepath: /Users/vanessa/Work/Rowsquared/RISSK/rissk/data/${globals:survey.name}/latest/30_PROCESSED/paradata.parquet
+# #
+# # # Equivalent to paradata_active (output of filter_active_paradata_node).
+# legacy_paradata_active:
+#   type: pandas.ParquetDataset
+#   filepath: /Users/vanessa/Work/Rowsquared/RISSK/rissk/data/${globals:survey.name}/latest/30_PROCESSED/paradata_active.parquet
 
 
 # === FEATURE CREATION DataFrames ===

@@ -71,7 +71,6 @@ def register_pipelines() -> dict[str, Pipeline]:
     """
     # Import sub-pipelines here to avoid circular imports at module level.
     from rissk_kedro.pipelines.data_ingestion import create_pipeline as ingestion_pipeline
-    from rissk_kedro.pipelines.feature_engineering import create_pipeline as feature_engineering_pipeline
     from rissk_kedro.pipelines.feature_creation import create_pipeline as feature_creation_pipeline
     from rissk_kedro.pipelines.rissk_scoring import create_pipeline as scoring_pipeline
 
@@ -170,7 +169,6 @@ def register_pipelines() -> dict[str, Pipeline]:
     # Shared upstream pipelines                                           #
     # ------------------------------------------------------------------ #
     ingestion = ingestion_pipeline()
-    feat_eng = feature_engineering_pipeline()
     feat_creation = feature_creation_pipeline()
 
     all_scoring = sum(per_qnr_pipelines.values(), Pipeline([])) + merge_pipeline
@@ -179,7 +177,6 @@ def register_pipelines() -> dict[str, Pipeline]:
 
     # Named pipelines for selective runs
     pipelines["data_ingestion"] = ingestion
-    pipelines["feature_engineering"] = feat_eng
     pipelines["feature_creation"] = feat_creation
     pipelines["rissk_scoring"] = all_scoring   # filter + score + merge; skips ingestion/feature creation
 
@@ -188,6 +185,6 @@ def register_pipelines() -> dict[str, Pipeline]:
         pipelines[name] = p
 
     # Full run
-    pipelines["__default__"] = ingestion + feat_eng + feat_creation + all_scoring
+    pipelines["__default__"] = ingestion + feat_creation + all_scoring
 
     return pipelines

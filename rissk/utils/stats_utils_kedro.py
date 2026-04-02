@@ -68,9 +68,13 @@ def get_digit_frequecies(df, feature_name, apply_first_digit, minimum_sample=50)
 
 
 def first_digit(val):
-    """Extract the first significant digit from a value using log10."""
+    """
+    Extract the first significant digit from a value using log10.
+    Follow legacy behaviour of setting values with abs(val) < 1 to 0 
+    (non-Benford domain) and applying absolute value to negatives.
+    """
     val = abs(val)
-    if val == 0:
+    if val < 1:
         return 0
     power = math.floor(math.log10(val))
     return int(val / 10**power)

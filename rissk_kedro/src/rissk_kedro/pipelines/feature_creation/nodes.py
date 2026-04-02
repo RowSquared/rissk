@@ -21,6 +21,17 @@ def create_base_item_table_node(
     parameters: Dict[str, Any]
 ) -> pd.DataFrame:
     """Node wrapper for create_base_item_table."""
+    questionnaires = parameters.get('survey', {}).get('questionnaires', [])
+    lines = [
+        "=" * 55,
+        "  FEATURE CREATION — Configuration",
+        "=" * 55,
+        "  Questionnaires:",
+    ]
+    for q in questionnaires:
+        lines.append(f"    • {q['name']}")
+    lines.append("=" * 55)
+    logger.info("\n" + "\n".join(lines))
     return create_base_item_table(microdata, paradata_full, parameters)
 
 def create_base_unit_table_node(
