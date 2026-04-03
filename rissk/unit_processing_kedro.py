@@ -139,16 +139,14 @@ def aggregate_item_to_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.Data
                 df_out[score] = df_out['interview__id'].map(data).fillna(0)
 
     # 3. GPS specifics (if gps scores exist)
-    gps_features = ['s__gps_proximity_counts', 's__gps_outlier', 's__gps_extreme_outlier']
+    # s__gps is the per-interview count of GPS-type questions (sum of the item-level
+    # boolean flag converted to int in calculate_gps_score), matching legacy
+    # make_score_unit__gps which summed f__gps from df_item.
+    gps_features = ['s__gps_proximity_counts', 's__gps_outlier', 's__gps_extreme_outlier', 's__gps']
     for score in gps_features:
         if score in df_item_scores.columns:
             data = df_item_scores.groupby('interview__id')[score].sum()
             df_out[score] = df_out['interview__id'].map(data).fillna(0)
-
-    # Legacy parity: s__gps is the sum of f__gps at interview level.
-    if 'f__gps' in df_item_scores.columns:
-        data = df_item_scores.groupby('interview__id')['f__gps'].sum()
-        df_out['s__gps'] = df_out['interview__id'].map(data).fillna(0)
             
     return df_out
 

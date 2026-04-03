@@ -98,6 +98,13 @@ def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd
     # when multiple GPS variables exist for the same (interview, roster, responsible)
     index_col = ['interview__id', 'roster_level', 'responsible', 'variable_name']
 
+    # s__gps: integer flag (1 = GPS question, 0 = other). Set unconditionally so that
+    # aggregate_item_to_unit_scores can always sum it to the interview-level GPS question
+    # count, matching legacy make_score_unit__gps which read f__gps from df_item directly
+    # regardless of whether the GPS outlier model ran successfully.
+    if 'f__gps' in df.columns:
+        df['s__gps'] = df['f__gps'].astype(int)
+
     # If required GPS columns are missing, return original df
     if any(col not in df.columns for col in required_columns + ['variable_name']):
         return df

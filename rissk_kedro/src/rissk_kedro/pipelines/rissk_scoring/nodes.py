@@ -99,6 +99,15 @@ def calculate_item_scores(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> 
         logger.info("Calculating gps_score")
         df_scored = calculate_gps_score(df_scored, parameters)
 
+    # Keep only the columns needed for downstream unit/responsible scoring and output.
+    # - responsible: required by aggregate_item_to_responsible_scores (groupby + init)
+    # - s__gps is produced by calculate_gps_score (f__gps.astype(int)) when GPS is
+    #   enabled and is picked up naturally by the s__ filter below.
+    id_cols = ['qnr', 'qnr_version', 'index_col', 'interview__id', 'variable_name', 'roster_level', 'responsible']
+    score_cols = [c for c in df_scored.columns if c.startswith('s__')]
+    keep_cols = [c for c in id_cols + score_cols if c in df_scored.columns]
+    df_scored = df_scored[keep_cols]
+
     return df_scored
 
 def calculate_unit_scores(
