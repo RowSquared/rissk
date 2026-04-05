@@ -184,4 +184,8 @@ def calculate_unit_scores(
                 how='left'
             )
 
+    # Drop feature columns (f__*) from unit output — only scores and identifiers are needed.
+    feature_cols = [c for c in df_final_unit.columns if c.startswith('f__')]
+    df_final_unit = df_final_unit.drop(columns=feature_cols)
+
     return df_final_unit, df_resp_scored

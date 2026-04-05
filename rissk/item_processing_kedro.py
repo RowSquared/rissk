@@ -98,12 +98,12 @@ def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd
     # when multiple GPS variables exist for the same (interview, roster, responsible)
     index_col = ['interview__id', 'roster_level', 'responsible', 'variable_name']
 
-    # s__gps: integer flag (1 = GPS question, 0 = other). Set unconditionally so that
+    # s__gps: integer flag (1 = GPS question, NaN = other). Set unconditionally so that
     # aggregate_item_to_unit_scores can always sum it to the interview-level GPS question
     # count, matching legacy make_score_unit__gps which read f__gps from df_item directly
     # regardless of whether the GPS outlier model ran successfully.
     if 'f__gps' in df.columns:
-        df['s__gps'] = df['f__gps'].astype(int)
+        df['s__gps'] = np.where(df['f__gps'].fillna(False).astype(bool), 1, np.nan)
 
     # If required GPS columns are missing, return original df
     if any(col not in df.columns for col in required_columns + ['variable_name']):
@@ -730,24 +730,27 @@ def calculate_first_digit_score(df_item: pd.DataFrame) -> pd.DataFrame:
 
     if feature_name not in df.columns or first_digit_feature not in df.columns:
         return df
-    if df[feature_name].dropna().empty or df[first_digit_feature].dropna().empty:
+    
+    valid_data = df[
+        ~pd.isnull(df[feature_name]) & (
+        ~pd.isnull(df[first_digit_feature])) & (
+        df[first_digit_feature] != 0)
+        ].copy()
+
+    if valid_data.empty:
         df[score_name] = np.nan
         return df
-
-    valid_data = df[~pd.isnull(df[feature_name])].copy()
+    # we need both f__numeric_response and f__first_digit to apply Benford tests, 
+    # so filter to rows where both are present 
     df[score_name] = np.nan
 
-    # f__first_digit is already computed by the feature pipeline and is NA for zeros
-    # and nulls, so filter_variable_name_by_frequency applied to it naturally restricts
-    # frequency and uniqueness counts to the nonzero Benford-eligible population.
-    # No need to recompute first digits here — f__numeric_response is only needed for
-    # the magnitude range check and for apply_benford_tests.
+    # f__first_digit is already computed by the feature pipeline
     valid_variables = filter_variable_name_by_frequency(
-        df, first_digit_feature, frequency=100, min_unique_values=3
+        valid_data, first_digit_feature, frequency=100, min_unique_values=3
     )
 
-    benford_data = valid_data[valid_data[feature_name] != 0].copy()
-    valid_variables = filter_variables_by_magnitude(benford_data, feature_name, valid_variables, min_order_of_magnitude=3)
+    # Additionally, Benford's Law is most applicable to variables that span several orders of magnitude,
+    valid_variables = filter_variables_by_magnitude(valid_data, feature_name, valid_variables, min_order_of_magnitude=3)
 
     # Computes the Jensen divergence for each variable_name and responsible on the first digit distribution.
     # Jensen's divergence returns a value between (0, 1) of how much the first digit distribution
@@ -756,8 +759,9 @@ def calculate_first_digit_score(df_item: pd.DataFrame) -> pd.DataFrame:
     # The Bendford Jensen divergence is calculated only on those responsible and variable_name
     # who have at least 50 records.
     # Once it is calculated, values that diverge from more than 50% from the median value get marked as "anomalous."
+
     benford_jensen_df = apply_benford_tests(
-        benford_data, valid_variables, 'responsible', feature_name, apply_first_digit=True, minimum_sample=50
+        valid_data, valid_variables, 'responsible', feature_name, apply_first_digit=True, minimum_sample=50
     )
         
     if not benford_jensen_df.empty:
