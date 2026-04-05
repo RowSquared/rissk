@@ -251,7 +251,12 @@ def add_pause_features(df_unit: pd.DataFrame, df_time: pd.DataFrame, allowed_fea
 
     df_pause = df_pause[['interview__id'] + selected_features]
     df_unit = df_unit.merge(df_pause, how='left', on='interview__id')
-
+    
+    # Fill NaNs for pause features: no pauses -> count=0, duration=0, empty list.
+    if 'f__pause_count' in selected_features:
+        df_unit['f__pause_count'] = df_unit['f__pause_count'].fillna(0).astype(int)
+    if 'f__pause_duration' in selected_features:
+        df_unit['f__pause_duration'] = df_unit['f__pause_duration'].fillna(0)
     if 'f__pause_list' in selected_features:
         # Ensure interviews absent in df_time also get an empty list after merge.
         df_unit['f__pause_list'] = df_unit['f__pause_list'].apply(

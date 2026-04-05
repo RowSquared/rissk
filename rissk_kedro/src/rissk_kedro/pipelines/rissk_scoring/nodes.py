@@ -183,6 +183,11 @@ def calculate_unit_scores(
                 on='responsible',
                 how='left'
             )
+            # Guard: a responsible present in df_unit but absent from df_resp_scored
+            # (no item rows) would produce NaN for all resp-level score columns after
+            # the left join. Fill with 0 to match legacy behaviour where _df_resp always
+            # has an entry for every responsible and fillna(0) is applied at write time.
+            df_final_unit[new_resp_cols] = df_final_unit[new_resp_cols].fillna(0)
 
     # Drop feature columns (f__*) from unit output — only scores and identifiers are needed.
     feature_cols = [c for c in df_final_unit.columns if c.startswith('f__')]
