@@ -10,30 +10,49 @@ from kedro.pipeline import Pipeline, node, pipeline
 from rissk_kedro.pipelines.feature_creation.nodes import make_qnr_filter, make_consent_filter
 
 
-def _load_questionnaire_names() -> list[str]:
-    """Read questionnaire names from conf/base/globals.yml at registry build time.
+def _read_globals() -> dict:
+    """Merge conf/base/globals.yml with conf/local/globals.yml (local takes precedence).
 
     pipeline_registry.py is imported before Kedro's ConfigLoader is available, so
-    globals.yml is read directly via yaml.safe_load.  The path is resolved relative
-    to this file: src/rissk_kedro/ -> (parents[2]) -> rissk_kedro/ project root.
+    globals files are read directly via yaml.safe_load.  The project root is resolved
+    relative to this file: src/rissk_kedro/ -> (parents[2]) -> rissk_kedro/.
+    The GUI writes user configuration to conf/local/globals.yml; this function ensures
+    those overrides are visible to the pipeline registry.
     """
-    globals_path = Path(__file__).parents[2] / "conf" / "base" / "globals.yml"
-    with globals_path.open() as fh:
-        globals_data = yaml.safe_load(fh)
-    questionnaires = globals_data.get("survey", {}).get("questionnaires", [])
+    project_root = Path(__file__).parents[2]
+
+    def _deep_merge(base: dict, override: dict) -> dict:
+        out = dict(base)
+        for k, v in override.items():
+            if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+                out[k] = _deep_merge(out[k], v)
+            else:
+                out[k] = v
+        return out
+
+    base_path = project_root / "conf" / "base" / "globals.yml"
+    base = yaml.safe_load(base_path.read_text()) or {}
+
+    local_path = project_root / "conf" / "local" / "globals.yml"
+    if local_path.exists():
+        local = yaml.safe_load(local_path.read_text()) or {}
+        return _deep_merge(base, local)
+    return base
+
+
+def _load_questionnaire_names() -> list[str]:
+    """Return questionnaire names from the merged globals config."""
+    questionnaires = _read_globals().get("survey", {}).get("questionnaires", [])
     return [q["name"] for q in questionnaires]
 
 
 def _load_questionnaires() -> list[dict]:
-    """Return the full list of questionnaire config dicts from conf/base/globals.yml.
+    """Return the full list of questionnaire config dicts from the merged globals config.
 
     Each dict may contain ``name``, ``VERSION``, and the optional
     ``filter_var`` consent-filter setting.
     """
-    globals_path = Path(__file__).parents[2] / "conf" / "base" / "globals.yml"
-    with globals_path.open() as fh:
-        globals_data = yaml.safe_load(fh)
-    return globals_data.get("survey", {}).get("questionnaires", [])
+    return _read_globals().get("survey", {}).get("questionnaires", [])
 
 
 def _make_merge_node(

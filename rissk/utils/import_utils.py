@@ -4,7 +4,8 @@ import pyarrow as pa
 import pandas as pd
 import zipfile
 from io import BytesIO
-from loguru import logger
+import logging
+logger = logging.getLogger(__name__)
 from pathlib import Path
 import re
 import os
