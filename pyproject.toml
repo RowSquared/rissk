@@ -11,11 +11,31 @@ authors = [
 ]
 license = { file = "LICENSE" }
 readme = "README.md"
+requires-python = ">=3.13"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License"
 ]
-requires-python = "~=3.9"
+
+# Minimal runtime dependencies for the rissk ML package.
+dependencies = [
+    "pandas>=2.2.3",
+    "numpy>=2.1.0",
+    "pyod>=1.1.5",
+    "scipy>=1.10",
+    "scikit-learn>=1.5",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Install with: uv sync --extra gui
+gui = [
+    "nicegui>=1.4",
+]
+
+# uv workspace: rissk_kedro/ is a member so `uv sync` installs both packages together.
+[tool.uv.workspace]
+members = ["rissk_kedro"]
 
 [tool.black]
 line-length = 99
