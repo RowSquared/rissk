@@ -71,14 +71,14 @@ def filter_matching_folders(partitions: Dict[str, Callable[[], Path]], questionn
     patterns = []
     for q in questionnaires:
         name = q.get("name")
-        versions = q.get("VERSION", [])
-        if not name or not versions:
+        if not name:
             continue
-            
-        version_pattern = "|".join(map(str, versions))
-        # Pattern: Matches start of string, the name, an underscore, 
-        # one of the versions, and then an underscore or end of string.
-        # Example: ^slbhies_listing_(1|2|6)_.*
+        versions = q.get("VERSION", [])
+        # Empty VERSION list means "accept any integer version"
+        version_pattern = "|".join(map(str, versions)) if versions else r"\d+"
+        # Pattern: Matches start of string, the name, an underscore,
+        # one of the versions (or any integer), and then an underscore.
+        # Example: ^slbhies_listing_(1|2|6)_.* or ^slbhies_listing_(\d+)_.*
         regex = re.compile(rf"^{re.escape(name)}_({version_pattern})_.*")
         patterns.append(regex)
 

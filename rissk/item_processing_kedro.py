@@ -91,6 +91,17 @@ def filter_columns(
 # --- SCORING FUNCTIONS BEGIN --- 
 
 def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+    """Score GPS coordinates for spatial outliers and coordinate proximity.
+
+    Produces three scores on each row:
+    - s__gps_proximity_counts: number of other GPS points within 10 m (accounting for accuracy).
+    - s__gps_extreme_outlier: 1 if the point is a 0,0 fix or lies beyond p75 + 3.5*IQR of
+      the Cartesian distance distribution from the median survey location.
+    - s__gps_outlier: 1/0 from COF (< 10 000 points) or LOF (>= 10 000 points) fit on x/y coords.
+
+    Also sets s__gps (integer flag: 1 = GPS question row, NaN = other) so that the unit-level
+    aggregation can count GPS questions per interview regardless of outlier model outcome.
+    """
     df = df_item.copy()
     score_cols = ['s__gps_proximity_counts', 's__gps_outlier', 's__gps_extreme_outlier']
     required_columns = ['f__gps_latitude', 'f__gps_longitude', 'f__gps_accuracy']
@@ -215,6 +226,11 @@ def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd
 
 
 def calculate_sequence_jump_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+    """Score sequence-jump anomalies per variable using the INNE isolation-based model.
+
+    Only variables with at least 100 records and 3 distinct jump values are scored.
+    Rows for variables that don't meet the threshold keep s__sequence_jump = NaN.
+    """
     feature_name = 'f__sequence_jump'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
@@ -246,6 +262,11 @@ def calculate_sequence_jump_score(df_item: pd.DataFrame, parameters: Dict[str, A
 
 
 def calculate_first_decimal_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+    """Score first-decimal-digit anomalies per variable using the COF density model.
+
+    Only variables with at least 100 records and 3 distinct first-decimal values are scored,
+    matching the legacy make_score__first_decimal filter.
+    """
     feature_name = 'f__first_decimal'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
@@ -280,6 +301,12 @@ def calculate_first_decimal_score(df_item: pd.DataFrame, parameters: Dict[str, A
 
 
 def calculate_answer_hour_set_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+    """Score hour-of-day anomalies using ECOD on f__answer_hour_set.
+
+    ECOD is a parameter-free outlier detection algorithm based on empirical CDF functions.
+    Hours that ECOD flags but which are the most frequent in the dataset are reverted to 0
+    (non-anomalous) because high-frequency hours cannot represent interviewer-level anomalies.
+    """
     # Detect time set anomalies using ECOD algorithm.
     # ECOD is a parameter-free, highly interpretable outlier detection algorithm based on empirical CDF functions
     feature_name = 'f__answer_hour_set'
@@ -331,6 +358,10 @@ def calculate_answer_hour_set_score(df_item: pd.DataFrame, parameters: Dict[str,
 
 
 def calculate_answer_changed_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+    """Score answer-change anomalies per variable using ECOD.
+
+    Only variables with at least 100 records and at least 1 distinct change value are scored.
+    """
     feature_name = 'f__answer_changed'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
@@ -423,6 +454,12 @@ def calculate_answer_removed_score_from_df(
 
 
 def calculate_answer_position_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+    """Score answer-position entropy per responsible per variable.
+
+    Flags enumerators whose selected-answer-position distribution differs by more than 50%
+    from the median entropy across all enumerators for each variable.
+    Only variables with at least 100 records and 3 distinct position values are scored.
+    """
     feature_name = 'f__answer_position'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
@@ -433,6 +470,10 @@ def calculate_answer_position_score(df_item: pd.DataFrame, parameters: Dict[str,
         df[score_name] = np.nan
         return df
 
+    # Score is computed at the responsible level: entropy of answer-position distributions
+    # measures whether an enumerator systematically favours certain positions (e.g. always
+    # first or always last option). This bias is only detectable across many interviews for
+    # the same enumerator, not within a single interview.
     valid_variables = filter_variable_name_by_frequency(
         df[~pd.isnull(df[feature_name])], feature_name, frequency=100, min_unique_values=3)
     df[score_name] = np.nan
@@ -458,6 +499,12 @@ def calculate_answer_position_score(df_item: pd.DataFrame, parameters: Dict[str,
     return df
 
 def calculate_answer_selected_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+    """Score the share of selected options in multi-option questions using ECOD.
+
+    Splits the output into s__answer_selected_lower (too few options selected) and
+    s__answer_selected_upper (too many selected) based on the inlier range for each variable.
+    Only variables with at least 100 records and 3 distinct share values are scored.
+    """
     feature_name = 'f__answer_selected'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
@@ -511,6 +558,12 @@ def calculate_answer_selected_score(df_item: pd.DataFrame, parameters: Dict[str,
 
 
 def calculate_answer_duration_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+    """Score answer-duration anomalies per variable using ECOD.
+
+    Splits output into s__answer_duration_lower (unusually fast) and s__answer_duration_upper
+    (unusually slow) relative to the inlier range for each variable.
+    Only variables with at least 100 records and 3 distinct duration values are scored.
+    """
     feature_name = 'f__answer_duration'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
@@ -562,6 +615,13 @@ def calculate_answer_duration_score(df_item: pd.DataFrame, parameters: Dict[str,
     return df
 
 def calculate_single_question_score(df_item: pd.DataFrame) -> pd.DataFrame:
+    """Score single-answer question entropy per responsible per variable.
+
+    Flags enumerators whose selected-answer distribution for a variable differs by more than 50%
+    from the median entropy across all enumerators, indicating a potential acquiescence bias.
+    Excludes filtered comboboxes and cascade questions. Only variables with at least 100
+    records and 3 distinct answer values are scored.
+    """
     feature_name = 'f__single_question'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
@@ -571,7 +631,11 @@ def calculate_single_question_score(df_item: pd.DataFrame) -> pd.DataFrame:
     # directly on 'value' with a qtype mask, matching legacy make_score__single_question.
     if any(col not in df.columns for col in columns):
         return df
-    
+
+    # Score is computed at the responsible level: entropy of the selected-answer distribution
+    # reveals whether an enumerator consistently picks the same option across interviews.
+    # This acquiescence bias only emerges when comparing many interviews per enumerator.
+
     # Mask specific for single questions without filter rules bypassing cascades
     single_question_mask = (
         (df["qtype"] == 'SingleQuestion') & 
@@ -610,6 +674,12 @@ def calculate_single_question_score(df_item: pd.DataFrame) -> pd.DataFrame:
 
 
 def calculate_multi_option_question_score(df_item: pd.DataFrame) -> pd.DataFrame:
+    """Score multi-option question entropy per responsible per variable.
+
+    Flags enumerators whose combination of selected answers for a variable differs by more than
+    50% from the median list-entropy across all enumerators, indicating systematic subset selection.
+    Only variables with at least 100 records and 3 distinct answer combinations are scored.
+    """
     feature_name = 'f__multi_option_question'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
@@ -618,6 +688,10 @@ def calculate_multi_option_question_score(df_item: pd.DataFrame) -> pd.DataFrame
     # directly on 'value' with a qtype mask, matching legacy make_score__multi_option_question.
     if 'qtype' not in df.columns:
         return df
+
+    # Score is computed at the responsible level: entropy of the combination of options
+    # selected across interviews exposes enumerators who systematically pick the same
+    # subset of answers for every respondent.
 
     multi_question_mask = (df["qtype"] == 'MultyOptionsQuestion')
     valid_data = df[multi_question_mask].copy()
@@ -654,6 +728,13 @@ def calculate_multi_option_question_score(df_item: pd.DataFrame) -> pd.DataFrame
     return df
 
 def calculate_first_digit_score(df_item: pd.DataFrame) -> pd.DataFrame:
+    """Score first-digit Benford's Law deviations per responsible per variable.
+
+    Computes the Jensen divergence between an enumerator's first-digit distribution and
+    that of all other enumerators. Only numeric variables spanning at least 3 orders of
+    magnitude and enumerators with at least 50 records per variable are evaluated.
+    Enumerators whose divergence exceeds the median by more than 50% are flagged.
+    """
     feature_name = 'f__numeric_response'
     first_digit_feature = 'f__first_digit'
     score_name = 's__first_digit'

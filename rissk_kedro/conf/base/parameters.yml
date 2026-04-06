@@ -44,7 +44,6 @@ features:
     use: true
     parameters:
       contamination: 0.1
-      frequency: 100
   first_digit:
     use: true
   last_digit:
@@ -104,8 +103,4 @@ features:
     use: true
   string_length:
     use: true
-
-# # Output Configuration
-# output:
-#   feature_score: true
-#   unit_risk_score_path: "results/unit_risk_score.csv"
+  

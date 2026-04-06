@@ -122,9 +122,12 @@ def get_df_time(df_paradata_full: pd.DataFrame) -> pd.DataFrame:
     # Using pd.NA for nullable integers/floats in pandas if column allows, or np.nan
     df_time.loc[df_time['time_difference'] < 0, 'time_difference'] = pd.NA
 
-    # time for answers/comments
+    # f__answer_duration: total time spent recording answers, i.e. the sum of all
+    # time-intervals from active events that conclude with AnswerSet or AnswerRemoved.
     df_time['f__answer_duration'] = df_time.loc[
         df_time['event'].isin(['AnswerSet', 'AnswerRemoved']), 'time_difference']
+    # f__comment_duration: total time spent on comments, i.e. the sum of all
+    # time-intervals from active events that conclude with CommentSet.
     df_time['f__comment_duration'] = df_time.loc[df_time['event'] == 'CommentSet', 'time_difference']
     df_time['f__pause_duration'] = df_time.loc[df_time['event'].isin(['Resumed', 'Restarted']), 'time_difference']
 
@@ -135,8 +138,10 @@ def get_df_time(df_paradata_full: pd.DataFrame) -> pd.DataFrame:
     condition = (df_time['event'].isin(active_events)) & (df_time['time_difference'] < 30 * 60)
     df_time['f__total_duration'] = df_time.loc[condition, 'time_difference']
 
-    # Starting timestamp per interview: min timestamp of the first AnswerSet event per interview.
-    # Using map on a pre-computed groupby result (matching the legacy approach).
+    # Starting timestamp per interview: minimum timestamp among AnswerSet events (not the
+    # global event minimum). If the device clock is adjusted later in the interview, the
+    # overall min of timestamp_local would return a misleadingly early start time. Anchoring
+    # to the first AnswerSet avoids this clock-adjustment artefact.
     start_time_map = df_time[df_time['event'] == 'AnswerSet'].groupby('interview__id')['timestamp_local'].min()
     df_time['f__starting_timestamp'] = df_time['interview__id'].map(start_time_map)
     
@@ -165,21 +170,24 @@ def get_df_sequence(df_paradata_full: pd.DataFrame) -> pd.DataFrame:
     df_last['f__previous_answer'] = df_last.groupby('interview__id')['answer'].shift().fillna(pd.NA)
     df_last['f__previous_roster'] = df_last.groupby('interview__id')['roster_level'].shift().fillna(pd.NA)
     
-    # f__sequence_jump
-    # Calculate answer sequence (1, 2, 3...) based on actual occurrence
+    # f__sequence_jump: the change in the gap between questionnaire order and answer order
+    # from one answered question to the next. A non-zero value means the interviewer skipped
+    # questions or navigated backwards relative to the questionnaire sequence.
+    # Calculate answer sequence (1, 2, 3...) based on actual occurrence order.
     df_last['answer_sequence'] = df_last.groupby('interview__id').cumcount() + 1
-    
-    # Diff between questionnaire sequence and answer sequence
-    # Ensure types are compatible
+
+    # diff = questionnaire position - answer position; a constant diff means sequential
+    # answering, while a change in diff indicates skipping ahead or going backwards.
     df_last['question_sequence'] = pd.to_numeric(df_last['question_sequence'], errors='coerce').fillna(0)
     df_last['diff'] = df_last['question_sequence'] - df_last['answer_sequence']
-    
-    # The 'jump' is the difference of the difference
+
+    # The jump is how much the diff itself changed from one answer to the next.
     df_last['f__sequence_jump'] = df_last.groupby('interview__id')['diff'].diff()
 
     return df_last
 
 def add_sequence_features(df_item: pd.DataFrame, df_sequence: pd.DataFrame, allowed_features: list) -> pd.DataFrame:
+    """Merge sequence-based features from df_sequence onto df_item for enabled features."""
     sequence_features = ['f__previous_question', 'f__previous_answer',
                          'f__previous_roster', 'f__sequence_jump']
     
@@ -198,6 +206,7 @@ def add_sequence_features(df_item: pd.DataFrame, df_sequence: pd.DataFrame, allo
     return df_item
 
 def add_item_time_features(df_item: pd.DataFrame, df_time: pd.DataFrame, allowed_features: list, item_level_columns: list) -> pd.DataFrame:
+    """Aggregate per-event answer/comment durations from df_time to item level and merge onto df_item."""
     time_features = ['f__answer_duration', 'f__comment_duration']
     
     selected_features = [f for f in time_features if f in allowed_features]
@@ -234,6 +243,7 @@ def add_item_time_features(df_item: pd.DataFrame, df_time: pd.DataFrame, allowed
     return df_item
 
 def add_pause_features(df_unit: pd.DataFrame, df_time: pd.DataFrame, allowed_features: list) -> pd.DataFrame:
+    """Aggregate pause count, total duration, and duration list from df_time to the unit table."""
     pause_features = ['f__pause_count', 'f__pause_duration', 'f__pause_list']
     selected_features = [f for f in pause_features if f in allowed_features]
 
@@ -266,6 +276,7 @@ def add_pause_features(df_unit: pd.DataFrame, df_time: pd.DataFrame, allowed_fea
     return df_unit
 
 def add_unit_time_features(df_unit: pd.DataFrame, df_time: pd.DataFrame, allowed_features: list) -> pd.DataFrame:
+    """Aggregate interview-level time features (total duration, elapse, days since start, clock shifts) onto df_unit."""
     time_features = ['f__total_duration', 'f__total_elapse', 'f__days_from_start', 'f__time_changed']
     selected_features = [f for f in time_features if f in allowed_features]
 
@@ -475,6 +486,11 @@ def feat_first_decimal(df_item, **kwargs):
     return df_item
 
 def feat_answer_position(df_item, **kwargs):
+    """Compute f__answer_position: relative position of the selected answer within the answer list.
+
+    Calculated only for SingleQuestion items with more than two options, excluding filtered
+    comboboxes and cascade children. Position is idx / (n_answers - 1), producing a value in [0, 1].
+    """
     # f__answer_position, relative position of the selected answer
     # only questions with more than two answers
     feature_name = 'f__answer_position'
@@ -522,6 +538,12 @@ def feat_answer_position(df_item, **kwargs):
     return df_item
 
 def feat_answer_removed(paradata_full):
+    """Aggregate AnswerRemoved event counts per item into f__answer_removed.
+
+    Returns a standalone DataFrame (not merged into df_item) because AnswerRemoved events
+    may reference items that were subsequently deleted from microdata and are therefore absent
+    from df_item. Consuming code scores this separately via calculate_answer_removed_score_from_df.
+    """
     # f__answer_removed, answers removed (by interviewer, or by system as a result of interviewer action).
     # Matches legacy get_feature_item__answer_removed which uses self.df_paradata, but it appends the 
     # feature to the item table instead of returning a separate dataframe. 

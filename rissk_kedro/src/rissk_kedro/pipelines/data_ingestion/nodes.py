@@ -47,7 +47,8 @@ def filter_extracted_survey_paths_node(survey_partitions: Dict[str, Callable[[],
     """
     lines = ["=" * 55, "  DATA INGESTION — Questionnaires to process", "=" * 55]
     for q in questionnaires:
-        versions = ", ".join(str(v) for v in q.get("VERSION", []))
+        ver_list = q.get("VERSION", [])
+        versions = ", ".join(str(v) for v in ver_list) if ver_list else "all"
         lines.append(f"  • {q['name']}  |  versions: [{versions}]")
     lines.append("=" * 55)
     logger.info("\n" + "\n".join(lines))
@@ -133,7 +134,13 @@ def process_paradata_node(
         paradata['timestamp_local'].dt.round('30min').dt.minute / 60
     )
 
-    # 4. Calculate interviewing flag and filter to first-pass interviewer events
+    # 4. Calculate interviewing flag and filter to first-pass interviewer events.
+    # interviewing=True for all events that occurred before any Supervisor/HQ interaction,
+    # False for everything after. A rejection or review event resets the interpretive
+    # context: answers recorded afterwards belong to a different (post-review) pass and
+    # should not be scored as if they were the original interviewing session.
+    # The cumsum trick propagates the flag forward so every subsequent row in the same
+    # interview automatically receives interviewing=False once the first flagged event fires.
     events_split = ['RejectedBySupervisor', 'OpenedBySupervisor', 'OpenedByHQ', 'RejectedByHQ']
     paradata['flag'] = paradata['event'].isin(events_split)
     paradata['cumulative_flag'] = paradata.groupby('interview__id')['flag'].cumsum()

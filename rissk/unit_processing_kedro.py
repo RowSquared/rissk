@@ -118,6 +118,8 @@ def aggregate_item_to_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.Data
     # Note: s__answer_removed is intentionally excluded here — it is scored
     # at unit level directly from paradata_full by calculate_answer_removed_unit_score
     # in calculate_unit_scores, so that items deleted from microdata are included.
+    # fillna(0): an interview absent from df_item_scores for a given feature has no
+    # scorable items, which means no anomaly was detected — the absence is not unknown.
     mean_scores = [
         's__answer_hour_set', 's__answer_changed',
         's__first_decimal', 's__sequence_jump'
@@ -151,16 +153,24 @@ def aggregate_item_to_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.Data
     return df_out
 
 def calculate_unit_level_scores(df_unit: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
-    """Calculate scores that are purely derived from unit-level features."""
+    """Calculate unit-level scores derived directly from unit-feature columns.
+
+    These scores do not involve item-level aggregation; each is a simple transformation
+    of an existing unit feature (rescaling, rate normalisation, or ECOD outlier detection).
+    Only columns present in df_unit are processed; missing features are skipped silently.
+    """
     df = df_unit.copy()
     
     if 'f__time_changed' in df.columns:
+        # Divide by 600 (seconds) to express device clock shifts in 10-minute units.
         df['s__time_changed'] = round(df['f__time_changed'].abs() / 600)
-        
+
     if 'f__total_duration' in df.columns:
+        # Divide by 300 (seconds) to express total active interview time in 5-minute units.
         df['s__total_duration'] = round(df['f__total_duration'] / 300)
-        
+
     if 'f__days_from_start' in df.columns:
+        # Convert days elapsed since the first interview in the dataset to weeks.
         df['s__days_from_start'] = (df['f__days_from_start'] / 7).astype(int)
         
     if 'f__total_elapse' in df.columns:
@@ -192,11 +202,13 @@ def calculate_unit_level_scores(df_unit: pd.DataFrame, parameters: Dict[str, Any
             df.drop(columns=[score_name, 'f__total_elapse_scaled'], inplace=True, errors='ignore')
 
     if 'f__pause_duration' in df.columns and 'f__total_elapse' in df.columns:
-        df['s__pause_duration'] = np.where(df['f__total_elapse'] != 0, 
+        # Express pause time as a fraction of the total elapsed interview time.
+        df['s__pause_duration'] = np.where(df['f__total_elapse'] != 0,
                                            df['f__pause_duration'] / df['f__total_elapse'], 0)
-        
+
     if 'f__pause_count' in df.columns and 'f__number_answered' in df.columns:
-        df['s__pause_count'] = np.where(df['f__number_answered'] != 0, 
+        # Express pause count as a rate per answered question, normalising for interview length.
+        df['s__pause_count'] = np.where(df['f__number_answered'] != 0,
                                         df['f__pause_count'] / df['f__number_answered'], 0)
 
     if 'f__number_answered' in df.columns:
@@ -216,7 +228,11 @@ def aggregate_item_to_responsible_scores(df_resp: pd.DataFrame, df_item_scores: 
     if df_out.empty:
         return df_out
 
-    # Mean across responsible directly
+    # s__single_question, s__multi_option_question, and s__answer_position are computed at
+    # the responsible level: they measure how uniformly an enumerator distributes answers
+    # across categories or positions, a pattern that only becomes detectable when pooling
+    # many interviews. Scores are averaged first within each variable, then across variables,
+    # to prevent high-answer-count questions from dominating the responsible-level signal.
     scores_double_mean = ['s__single_question', 's__multi_option_question', 's__answer_position']
     for score in scores_double_mean:
         if score in df_item_scores.columns:
@@ -225,6 +241,9 @@ def aggregate_item_to_responsible_scores(df_resp: pd.DataFrame, df_item_scores: 
             if 'responsible' in df_out.columns:
                 df_out[score] = df_out['responsible'].map(data).fillna(0)
 
+    # s__first_digit uses Jensen divergence from Benford's Law, which requires a large
+    # sample of numeric responses per enumerator to be statistically meaningful and is
+    # therefore aggregated at the responsible level rather than per interview.
     if 's__first_digit' in df_item_scores.columns:
         data = df_item_scores.groupby('responsible')['s__first_digit'].mean()
         if 'responsible' in df_out.columns:

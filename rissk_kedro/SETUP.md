@@ -7,7 +7,7 @@ flagging individual interviews most likely to contain unwanted interviewer behav
 
 ## Prerequisites
 
-- **Python 3.10 – 3.13** installed on your machine
+- **Python 3.13** installed on your machine
 - An internet connection for the initial install
 - Survey Solutions export files (Main Survey Data + Paradata ZIPs)
 
@@ -41,16 +41,15 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 Clone with Git:
 ```bash
 git clone https://github.com/rowsquared/rissk.git
-cd rissk/rissk_kedro
+cd rissk
 ```
 
-Or download the ZIP from GitHub, unzip it, and navigate to the `rissk_kedro/` folder.
+Or download the ZIP from GitHub, unzip it, and navigate to the `rissk/` folder.
 
 ### 3. Install dependencies
 
 ```bash
-uv sync
-uv pip install "nicegui>=1.4"
+uv sync --extra gui
 ```
 
 ### 4. Launch the GUI
@@ -82,18 +81,18 @@ conda activate rissk
 
 ```bash
 git clone https://github.com/rowsquared/rissk.git
-cd rissk/rissk_kedro
+cd rissk
 ```
 
 ### 3. Install dependencies
 
 ```bash
-pip install -e ".[gui]"
+pip install -e "rissk_kedro[gui]"
 ```
 
 Or install manually:
 ```bash
-pip install -r requirements.txt
+pip install -r rissk_kedro/requirements.txt
 pip install "nicegui>=1.4"
 ```
 
@@ -168,6 +167,9 @@ Access the **Advanced** tab to:
 Experienced users can run Kedro directly from the `rissk_kedro/` directory:
 
 ```bash
+cd rissk_kedro
+
+```bash
 # Full pipeline
 kedro run
 
@@ -177,7 +179,7 @@ kedro run --pipeline feature_creation
 kedro run --pipeline rissk_scoring
 ```
 
-Configuration overrides go in `conf/local/globals.yml` and `conf/local/parameters.yml`
+Configuration overrides go in `rissk_kedro/conf/local/globals.yml` and `rissk_kedro/conf/local/parameters.yml`
 (these files are ignored by git).
 
 ---

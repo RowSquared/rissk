@@ -19,23 +19,23 @@ data_root: "data"
 #       # # # The answer value must be a string (paradata answers are always strings).
       
 
-survey:
-  name: "pmpmd"
-  questionnaires:
-    - name: "pmpmd_community"
-      VERSION: [2, 3, 4, 5]
-      filter_var: null
-    - name: "pmpmd_household"
-      VERSION: [4, 5, 6]
-      filter_var: null
-
-
 # survey:
-#   name: "slchbs"
+#   name: "pmpmd"
 #   questionnaires:
-#     - name: "slchbs_saintlucia_2025"
-#       VERSION: [6, 7] # 5 is for testing empty data handling
-#       filter_var: null 
+#     - name: "pmpmd_community"
+#       VERSION: [2, 3, 4, 5]
+#       filter_var: null
+#     - name: "pmpmd_household"
+#       VERSION: [4, 5, 6]
+#       filter_var: null
+
+
+survey:
+  name: "slchbs"
+  questionnaires:
+    - name: "slchbs_saintlucia_2025"
+      VERSION: [6, 7] # 5 is for testing empty data handling
+      filter_var: null 
 
 
 # survey:
