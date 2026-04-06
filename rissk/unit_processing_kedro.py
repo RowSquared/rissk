@@ -256,6 +256,13 @@ def calculate_responsible_score(df_resp_features: pd.DataFrame, restricted_colum
     if df_pca_input.empty:
          df_resp['responsible_score'] = 0.0
          return df_resp
+
+    # PCA-based outlier scoring requires at least 2 varying columns to be meaningful:
+    # with only 1 component there are no minor eigenvectors to compute weighted
+    # reconstruction error against, so all scores would be identical.
+    if df_pca_input.shape[1] < 2:
+        df_resp['responsible_score'] = 0.0
+        return df_resp
          
     df_pca_scaled = pd.DataFrame(scaler.fit_transform(df_pca_input), columns=df_pca_input.columns)
     

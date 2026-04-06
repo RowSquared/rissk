@@ -211,4 +211,8 @@ def calculate_unit_scores(
     feature_cols = [c for c in df_unit_final.columns if c.startswith('f__')]
     df_unit_final = df_unit_final.drop(columns=feature_cols)
 
+    # Add qnr as the first column of the responsible scores output.
+    if qnr_name is not None and 'qnr' not in df_resp.columns:
+        df_resp.insert(0, 'qnr', qnr_name)
+
     return df_unit_final, df_resp

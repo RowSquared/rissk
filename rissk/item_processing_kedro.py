@@ -371,76 +371,7 @@ def calculate_answer_changed_score(df_item: pd.DataFrame, parameters: Dict[str, 
 # f__answer_removed is merged back with how='left' — so those deleted items are
 # silently dropped, making an item-level s__answer_removed on df_item structurally
 # incomplete and potentially misleading.
-#
-# The authoritative score is computed at UNIT level from paradata_full directly by
-# calculate_answer_removed_unit_score below, matching legacy coverage exactly.
-
-
-def calculate_answer_removed_unit_score(
-    paradata_full: pd.DataFrame,
-    parameters: Dict[str, Any],
-) -> pd.Series:
-    """Score answer-removal anomalies from paradata_full directly, matching legacy
-    make_score_unit__answer_removed which operated on self.df_paradata (NOT df_item).
-
-    Items deleted from microdata — whose AnswerRemoved events are absent from df_item
-    because of the how='left' merge in feat_answer_removed — are included here,
-    eliminating the undercount introduced by the Kedro item-table path.
-
-    Returns a Series indexed by interview__id → mean s__answer_removed score,
-    ready to be mapped directly into df_unit.
-    """
-    feature_name = 'f__answer_removed'
-    score_name = rename_feature(feature_name)
-
-    required_cols = ['event', 'role', 'order', 'interview__id', 'variable_name']
-    if any(c not in paradata_full.columns for c in required_cols):
-        logger.warning(
-            "calculate_answer_removed_unit_score: paradata_full is missing one or more "
-            "required columns %s; returning empty Series.", required_cols
-        )
-        return pd.Series(dtype=float)
-
-    # Replicate legacy get_feature_item__answer_removed exactly.
-    removed_mask = (paradata_full['event'] == 'AnswerRemoved') & (paradata_full['role'] == 1)
-    df_removed = paradata_full[removed_mask]
-
-    if df_removed.empty:
-        return pd.Series(dtype=float)
-
-    # Match legacy groupby grain: (interview__id, responsible, variable_name, qnr_seq).
-    # qnr_seq may be absent in some paradata versions; fall back gracefully.
-    group_cols = [c for c in ['interview__id', 'responsible', 'variable_name', 'qnr_seq']
-                  if c in df_removed.columns]
-    df = df_removed.groupby(group_cols).agg(
-        f__answer_removed=('order', 'count')
-    ).reset_index()
-
-    valid_variables = filter_variable_name_by_frequency(df, feature_name, frequency=100, min_unique_values=1)
-
-    # Init to NaN: variables not passing the frequency filter keep NaN, indicating
-    # evaluation was not possible — unit-level groupby().mean() skips NaN so they
-    # don't contribute a spurious zero to the interview mean.
-    df[score_name] = np.nan
-    contamination = get_contamination_parameter(
-        parameters.get('features', {}),
-        feature_name,
-        automatic_contamination=parameters.get('automatic_contamination', False),
-        method='medfilt',
-        random_state=42,
-    )
-
-    for var in valid_variables:
-        mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
-        if mask.sum() > 0:
-            model = ECOD(contamination=contamination)
-            model.fit(df.loc[mask, [feature_name]])
-            df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
-
-    # Aggregate to interview__id level matching legacy make_score_unit__answer_removed.
-    # groupby().mean() skips NaN rows, so only scored variables contribute.
-    return df.groupby('interview__id')[score_name].mean()
-
+   
 
 def calculate_answer_removed_score_from_df(
     removed_answers: pd.DataFrame,
