@@ -111,12 +111,16 @@ def calculate_item_scores(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> 
     return df_scored
 
 def calculate_unit_scores(
-        df_unit: pd.DataFrame, 
-        df_item_scores: pd.DataFrame, 
+        df_unit: pd.DataFrame,
+        df_item_scores: pd.DataFrame,
         parameters: Dict[str, Any], removed_answers: pd.DataFrame = None
         ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Aggregate item scores to unit, extract responsible scores, and calculate global risk.
+
+    This node receives data for a single questionnaire — the pipeline_registry filters
+    item_features / unit_features per questionnaire before invoking the scoring pipeline,
+    so no internal qnr loop is needed here.
 
     removed_answers is the pre-aggregated AnswerRemoved dataset produced by build_removed_answers_node.
     It is used to compute s__answer_removed at unit level, matching legacy behaviour where
@@ -127,13 +131,13 @@ def calculate_unit_scores(
 
     # 1. Aggregate item-level scores up to unit level.
     # s__answer_removed is excluded from this aggregation (see aggregate_item_to_unit_scores);
-    # it is handled below using paradata_full to match legacy coverage.
+    # it is handled below using removed_answers to match legacy coverage.
     df_unit_scored = aggregate_item_to_unit_scores(df_unit, df_item_scores)
 
-    # 2a. Score answer_removed at unit level from paradata_full.
+    # 2a. Score answer_removed at unit level from removed_answers.
     # This replicates legacy make_score_unit__answer_removed which read from df_paradata
     # directly and therefore included AnswerRemoved events for items later deleted from
-    # microdata. Falling back to the df_item-based mean when paradata_full is unavailable.
+    # microdata. Falling back to the df_item-based mean when removed_answers is unavailable.
     if features.get('answer_removed', {}).get('use', False):
         if removed_answers is not None and not removed_answers.empty:
             unit_removed = calculate_answer_removed_score_from_df(removed_answers, parameters)
@@ -145,52 +149,66 @@ def calculate_unit_scores(
             )
             data = df_item_scores.groupby('interview__id')['s__answer_removed'].mean()
             df_unit_scored['s__answer_removed'] = df_unit_scored['interview__id'].map(data).fillna(0)
-    
-    # 2b. Add pure unit-level calculations
+
+    # 2b. Add pure unit-level calculations (row-wise or by interview__id).
     df_unit_scored = calculate_unit_level_scores(df_unit_scored, parameters)
 
-    # 3. Aggregate item-level scores up to responsible level
-    df_resp_scored = pd.DataFrame()
-    df_resp_scored = aggregate_item_to_responsible_scores(df_resp_scored, df_item_scores)
-    
-    # 4. Calculate final responsible score via PCA
-    restricted_columns = parameters.get('unit_scoring', {}).get('restricted_columns', [])
-    df_resp_scored = calculate_responsible_score(df_resp_scored, restricted_columns)
-    
-    # Determine all scored columns dynamically (s_*)
-    score_columns = [col for col in df_unit_scored.columns if col.startswith('s__')]
-    
-    # 5. Calculate final global unit risk score
-    df_final_unit = calculate_global_score(
-        df_unit_scores=df_unit_scored, 
-        df_resp_scores=df_resp_scored, 
+    qnr_name = df_unit_scored['qnr'].iloc[0] if 'qnr' in df_unit_scored.columns and not df_unit_scored.empty else None
+    logger.info(f"Scoring questionnaire: {qnr_name!r} ({len(df_unit_scored)} interviews)")
+
+    if df_unit_scored.empty:
+        logger.warning(f"No units found for questionnaire '{qnr_name}' — returning empty.")
+        return df_unit_scored, pd.DataFrame()
+
+    # 3. Aggregate item scores to responsible level.
+    # Seed df_resp from unit_features responsibles (all responsibles with any interview
+    # activity), matching legacy which seeds _df_resp from df_active_paradata.
+    # Responsibles present in unit_features but absent from item_scores (no scoreable
+    # items) will have NaN in all score columns → filled to 0 before PCA, exactly as
+    # legacy make_responsible_score does via fillna(0).
+    df_resp_init = (
+        df_unit_scored[['responsible']]
+        .drop_duplicates()
+        .loc[lambda d: (d['responsible'] != '') & d['responsible'].notna()]
+        .reset_index(drop=True)
+        .copy()
+    )
+    df_resp = aggregate_item_to_responsible_scores(df_resp_init, df_item_scores)
+
+    # 4. PCA-based responsible score.
+    # restricted_columns = ALL unit-level s__ columns (matching legacy make_responsible_score
+    # which receives restricted_columns=_score_columns, the full set including constant cols).
+    # This ensures any responsible-level feature that also appears at unit level (e.g.
+    # s__single_question, s__answer_position) is excluded from the resp PCA regardless of
+    # whether it has variance — exactly as legacy does.
+    score_columns = [c for c in df_unit_scored.columns if c.startswith('s__')]
+    df_resp = calculate_responsible_score(df_resp, score_columns)
+
+    # 5. IForest global unit risk score.
+    df_unit_final = calculate_global_score(
+        df_unit_scores=df_unit_scored,
+        df_resp_scores=df_resp,
         score_columns=score_columns,
         combine_resp_score=True,
-        restricted_columns=restricted_columns
+        restricted_columns=None,
     )
 
     # 6. Merge responsible-level s__ columns back onto unit output.
-    # Legacy save() merges _df_resp (which holds s__single_question,
-    # s__multi_option_question, s__answer_position, s__first_digit) back
-    # onto _df_unit by responsible so those scores appear in the feature CSV.
-    resp_s_cols = [c for c in df_resp_scored.columns if c.startswith('s__')]
-    if resp_s_cols and 'responsible' in df_resp_scored.columns and not df_resp_scored.empty:
-        # Only bring in columns not already present at unit level
-        new_resp_cols = [c for c in resp_s_cols if c not in df_final_unit.columns]
+    # Legacy save() merges _df_resp (s__single_question, s__multi_option_question,
+    # s__answer_position, s__first_digit) back onto _df_unit by responsible.
+    resp_s_cols = [c for c in df_resp.columns if c.startswith('s__')]
+    if resp_s_cols and 'responsible' in df_resp.columns:
+        new_resp_cols = [c for c in resp_s_cols if c not in df_unit_final.columns]
         if new_resp_cols:
-            df_final_unit = df_final_unit.merge(
-                df_resp_scored[['responsible'] + new_resp_cols],
+            df_unit_final = df_unit_final.merge(
+                df_resp[['responsible'] + new_resp_cols],
                 on='responsible',
-                how='left'
+                how='left',
             )
-            # Guard: a responsible present in df_unit but absent from df_resp_scored
-            # (no item rows) would produce NaN for all resp-level score columns after
-            # the left join. Fill with 0 to match legacy behaviour where _df_resp always
-            # has an entry for every responsible and fillna(0) is applied at write time.
-            df_final_unit[new_resp_cols] = df_final_unit[new_resp_cols].fillna(0)
+            df_unit_final[new_resp_cols] = df_unit_final[new_resp_cols].fillna(0)
 
-    # Drop feature columns (f__*) from unit output — only scores and identifiers are needed.
-    feature_cols = [c for c in df_final_unit.columns if c.startswith('f__')]
-    df_final_unit = df_final_unit.drop(columns=feature_cols)
+    # Drop feature columns (f__*) from unit output — only scores and identifiers needed.
+    feature_cols = [c for c in df_unit_final.columns if c.startswith('f__')]
+    df_unit_final = df_unit_final.drop(columns=feature_cols)
 
-    return df_final_unit, df_resp_scored
+    return df_unit_final, df_resp
