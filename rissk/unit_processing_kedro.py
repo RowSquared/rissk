@@ -122,7 +122,7 @@ def aggregate_item_to_unit_scores(df_unit: pd.DataFrame, df_item_scores: pd.Data
     # scorable items, which means no anomaly was detected — the absence is not unknown.
     mean_scores = [
         's__answer_hour_set', 's__answer_changed',
-        's__first_decimal', 's__sequence_jump'
+        's__first_decimals', 's__sequence_jump'
     ]
     for score in mean_scores:
         if score in df_item_scores.columns:

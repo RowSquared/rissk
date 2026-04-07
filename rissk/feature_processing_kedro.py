@@ -466,9 +466,9 @@ def feat_last_digit(df_item, **kwargs):
         
     return df_item
 
-def feat_first_decimal(df_item, **kwargs):
-    # f__first_decimal, first decimal digit if numeric question else empty pd.NA
-    feature_name = 'f__first_decimal'
+def feat_first_decimals(df_item, **kwargs):
+    # f__first_decimals, first decimals if numeric question else empty pd.NA
+    feature_name = 'f__first_decimals'
     # mask: not integer, not empty & not mumeric sentinel
     numeric_mask = get_numeric_mask(df_item=df_item, filter_answer_values=True)
     mask_integer = (df_item['is_integer'] == False) & (~pd.isnull(df_item['value']))
@@ -477,7 +477,12 @@ def feat_first_decimal(df_item, **kwargs):
     
     if mask.any():
         values = pd.to_numeric(df_item.loc[mask, 'value'], errors='coerce')
-        res = np.floor(values * 10) % 10
+        # Intentional: capture the first TWO decimal digits (e.g. 3.47 → 47) rather than just
+        # the first (e.g. 4). Using two digits gives the COF model a finer-grained signal and
+        # materially reduces hash-collisions for values like x.10, x.20 … x.90 that would be
+        # indistinguishable if only a single decimal were retained. The feature is therefore
+        # named f__first_decimals (plural) to make this design choice visible at a glance.
+        res = np.floor(values * 100) % 100
         df_item.loc[mask, feature_name] = res.astype('Int64')
 
     # Match legacy: ensure the full feature column uses nullable integer dtype.
@@ -763,7 +768,7 @@ ITEM_FEATURE_MAP = {
     'numeric_response': feat_numeric_response,
     'first_digit': feat_first_digit,
     'last_digit': feat_last_digit,
-    'first_decimal': feat_first_decimal,
+    'first_decimals': feat_first_decimals,
     'answer_position': feat_answer_position,
     'answer_changed': feat_answer_changed,
     'answer_selected': feat_answer_selected,

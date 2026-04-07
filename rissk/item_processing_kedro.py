@@ -261,13 +261,13 @@ def calculate_sequence_jump_score(df_item: pd.DataFrame, parameters: Dict[str, A
     return df
 
 
-def calculate_first_decimal_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
-    """Score first-decimal-digit anomalies per variable using the COF density model.
+def calculate_first_decimals_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd.DataFrame:
+    """Score anomalies in the first two decimal digits per variable using the COF density model.
 
-    Only variables with at least 100 records and 3 distinct first-decimal values are scored,
-    matching the legacy make_score__first_decimal filter.
+    f__first_decimals stores the first TWO decimal digits of each numeric response (e.g. 3.47 → 47).
     """
-    feature_name = 'f__first_decimal'
+    # s__first_decimals is the anomaly score derived from f__first_decimals (two decimal digits).
+    feature_name = 'f__first_decimals'
     score_name = rename_feature(feature_name)
     df = df_item.copy()
 

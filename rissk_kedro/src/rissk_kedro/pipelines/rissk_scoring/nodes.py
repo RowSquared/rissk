@@ -5,7 +5,7 @@ import logging
 from rissk.item_processing_kedro import (
     calculate_answer_hour_set_score,
     calculate_sequence_jump_score,
-    calculate_first_decimal_score,
+    calculate_first_decimals_score,
     calculate_answer_changed_score,
     # calculate_answer_removed_score is intentionally absent: s__answer_removed is
     # computed at unit level from the removed_answers dataset by calculate_answer_removed_score_from_df
@@ -60,9 +60,9 @@ def calculate_item_scores(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> 
         logger.info("Calculating sequence_jump_score")
         df_scored = calculate_sequence_jump_score(df_scored, parameters)
 
-    if features.get('first_decimal', {}).get('use', False):
-        logger.info("Calculating first_decimal_score")
-        df_scored = calculate_first_decimal_score(df_scored, parameters)
+    if features.get('first_decimals', {}).get('use', False):
+        logger.info("Calculating first_decimals_score")
+        df_scored = calculate_first_decimals_score(df_scored, parameters)
 
     if features.get('answer_changed', {}).get('use', False):
         logger.info("Calculating answer_changed_score")
