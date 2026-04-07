@@ -2,11 +2,7 @@
 survey:
   # This tells Kedro to pull the entire block from globals.yml
   questionnaires: ${globals:survey.questionnaires}
-
-# # Ingestion Configuration
-# ingestion:
-#   raw_data_path: "data/hies2024/latest/10_RAW"      
-
+     
 # Set the password for zip files in local/parameters.yml if needed. 
 # It will override the base/parameters.yml setting.
 zip_password: null
@@ -34,8 +30,6 @@ features:
     use: true
     parameters:
       contamination: 0.1
-  answer_share_selected:
-    use: true
   answer_duration:
     use: true
     parameters:
@@ -45,11 +39,11 @@ features:
     parameters:
       contamination: 0.1
   first_digit:
-    use: true
+    use: true # numeric_response must be set to true also for this to work
   last_digit:
-    use: true
+    use: false
   numeric_response:
-    use: true
+    use: true 
   sequence_jump:
     use: true
     parameters:
@@ -70,15 +64,15 @@ features:
     parameters:
       contamination: 0.1
   pause_list:
-    use: true
+    use: false
     parameters:
       contamination: 0.1
   comment_length:
-    use: true
+    use: false
   comment_set:
-    use: true
+    use: false
   comment_duration:
-    use: true
+    use: false
   number_unanswered:
     use: true
   number_answered:
@@ -102,5 +96,5 @@ features:
   answer_position:
     use: true
   string_length:
-    use: true
+    use: false
   
