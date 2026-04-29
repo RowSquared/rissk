@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import logging
+import warnings
 from typing import List, Dict, Any, Tuple
 from pyod.models.thresholds import FILTER
 from pyod.models.ecod import ECOD
@@ -294,8 +295,30 @@ def calculate_first_decimals_score(df_item: pd.DataFrame, parameters: Dict[str, 
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
         if mask.sum() > 0:
             model = COF(contamination=contamination)
-            model.fit(df.loc[mask, [feature_name]])
-            df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+            # COF on f__first_decimals produces several expected RuntimeWarnings due to
+            # degenerate neighbourhoods (many identical values, e.g. x.00):
+            #   - pyod.models.cof: "divide by zero / invalid value encountered in scalar divide"
+            #     — zero chaining distance causes a 0/0 in the COF score formula.
+            #   - numpy._core._methods: "overflow encountered in multiply/reduce"
+            #     — intermediate squared-distance arithmetic overflows before being clipped.
+            # COF handles these cases gracefully (producing NaN/inf scores that it then
+            # clips or ignores). They are intentional side-effects of applying a
+            # distance-based algorithm to heavily-tied data, not coding errors.
+            # We suppress all RuntimeWarnings from both modules for the duration of
+            # fit/predict to keep the log clean.
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    'ignore',
+                    category=RuntimeWarning,
+                    module=r'pyod\.models\.cof',
+                )
+                warnings.filterwarnings(
+                    'ignore',
+                    category=RuntimeWarning,
+                    module=r'numpy\._core\._methods',
+                )
+                model.fit(df.loc[mask, [feature_name]])
+                df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
             
     return df
 

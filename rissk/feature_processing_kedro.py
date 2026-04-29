@@ -29,8 +29,6 @@ def get_numeric_mask(df_item: pd.DataFrame, filter_answer_values: bool) -> pd.Se
     sentinel_mask = _is_missing_numeric_sentinel(df_item['value'])
     mask = (
         (df_item["qtype"] == 'NumericQuestion') &
-        # TODO remove '' !!
-        # (df_item['value'] != '') &
         (~pd.isnull(df_item['value'])) &
         (~sentinel_mask)
     )
