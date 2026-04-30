@@ -70,33 +70,23 @@ Your browser will open automatically at **http://localhost:8080**.
 
 ## Option B — conda (for experienced users)
 
-### 1. Create and activate a conda environment
-
-```bash
-conda create -n rissk python=3.13
-conda activate rissk
-```
-
-### 2. Get the code
+### 1. Get the code
 
 ```bash
 git clone https://github.com/rowsquared/rissk.git
 cd rissk
 ```
 
-### 3. Install dependencies
+### 2. Create and activate the conda environment
 
 ```bash
-pip install -e "rissk_kedro[gui]"
+conda env create -f environment_kedro.yml
+conda activate rissk_kedro
 ```
 
-Or install manually:
-```bash
-pip install -r rissk_kedro/requirements.txt
-pip install "nicegui>=1.4"
-```
+This installs Python 3.13, all pipeline dependencies, and the RISSK package in one step.
 
-### 4. Launch the GUI
+### 3. Launch the GUI
 
 ```bash
 bash run_gui.sh        # macOS / Linux
@@ -117,7 +107,7 @@ Choose where RISSK will read and write survey data.
 The GUI shows you the exact subfolder where ZIP files must be placed, e.g.:
 
 ```
-/Users/jane/surveys/pmpmd/latest/10_RAW/
+/Users/jane/surveys/pmpmd_household/latest/10_RAW/
 ```
 
 Click **Create folder & Open** to create that folder and open it in your file manager.
@@ -134,12 +124,13 @@ Export from Survey Solutions and place the **unmodified ZIP files** in the folde
 
 Do **not** rename, modify, or unzip the files.
 
-### Step 3 — Survey configuration
+### Step 3 — Questionnaire configuration
 
-- **Survey name:** exactly as it appears in Survey Solutions (e.g. `pmpmd`).
-- **Questionnaires:** one row per questionnaire template.
-  - **Versions:** comma-separated list, e.g. `4, 5, 6`.
-  - **Consent filter (optional):** score only interviews where a specific paradata variable equals a required value (useful for surveys with a consent question).
+- **Questionnaire name:** the template name exactly as it appears in Survey Solutions (e.g. `pmpmd_household`). This is also used as the data folder name.
+- **Versions:** comma-separated list of version numbers to process, e.g. `4, 5, 6`.
+- **Consent filter (optional):** score only interviews where a specific paradata variable equals a required value (useful for surveys with a consent question).
+
+To switch to a different questionnaire, update the name in the Setup tab and save — or edit `questionnaire.name` directly in `conf/local/globals.yml`.
 
 ### Step 4 — Save & Run
 
@@ -150,7 +141,7 @@ Do **not** rename, modify, or unzip the files.
 
 Results are written to:
 ```
-<data_root>/<survey_name>/latest/40_SCORED/unit_risk_scores.csv
+<data_root>/<questionnaire_name>/latest/40_SCORED/unit_risk_scores.csv
 ```
 
 ### Advanced settings

@@ -39,22 +39,25 @@ def extract_zip_files_node(survey_zip_partitions: Dict[str, Callable[[], Path]],
         #     logger.debug(f"Skipping non-zip partition: {partition_id}")
 
 
-def filter_extracted_survey_paths_node(survey_partitions: Dict[str, Callable[[], Any]], questionnaires: List[Dict]) -> List[Path]:
+def filter_extracted_survey_paths_node(survey_partitions: Dict[str, Callable[[], Any]], questionnaire: Dict) -> List[Path]:
     """
     Return extracted folder paths matching questionnaire/version patterns
-    using survey partition entries.
+    using partition entries.
     This node does not perform extraction.
     """
-    lines = ["=" * 55, "  DATA INGESTION — Questionnaires to process", "=" * 55]
-    for q in questionnaires:
-        ver_list = q.get("VERSION", [])
-        versions = ", ".join(str(v) for v in ver_list) if ver_list else "all"
-        lines.append(f"  • {q['name']}  |  versions: [{versions}]")
-    lines.append("=" * 55)
+    ver_list = questionnaire.get("VERSION", [])
+    versions = ", ".join(str(v) for v in ver_list) if ver_list else "all"
+    lines = [
+        "=" * 55,
+        "  DATA INGESTION — Questionnaire to process",
+        "=" * 55,
+        f"  • {questionnaire['name']}  |  versions: [{versions}]",
+        "=" * 55,
+    ]
     logger.info("\n" + "\n".join(lines))
 
-    logger.info(f"Collecting matching survey folders from {len(survey_partitions)} partition entries")
-    return filter_matching_folders(survey_partitions, questionnaires)
+    logger.info(f"Collecting matching folders from {len(survey_partitions)} partition entries")
+    return filter_matching_folders(survey_partitions, [questionnaire])
 
 
 def load_paradata_node(file_paths: List[Path]) -> pd.DataFrame:

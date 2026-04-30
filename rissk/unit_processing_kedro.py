@@ -293,3 +293,58 @@ def calculate_responsible_score(df_resp_features: pd.DataFrame, restricted_colum
     
     # Merge back to original resp mapping
     return df_resp.merge(df_grouped[['responsible', 'responsible_score']], on='responsible', how='left')
+
+
+# def aggregate_feature_unit__comments(
+#     df_item: pd.DataFrame,
+#     df_unit: pd.DataFrame,
+# ) -> pd.DataFrame:
+#     """Aggregate comment-related features from item level to unit level (NOT YET PORTED).
+#
+#     Legacy `make_feature_unit__comments` in UnitDataProcessing populated f__comments_set
+#     and f__comment_length on the unit frame by summing item-level values per interview__id.
+#     The function was already commented out in the legacy codebase and the features were
+#     not active in the pipeline.  Kept commented here for reference.
+#     """
+#     df_out = df_unit.copy()
+#     columns_to_check = ['f__comments_set', 'f__comment_length']
+#     if any(col not in df_out.columns for col in columns_to_check):
+#         if any(col in df_item.columns for col in columns_to_check):
+#             df_unit_comment = df_item.groupby('interview__id').agg(
+#                 f__comments_set=('f__comments_set', 'sum'),
+#                 f__comment_length=('f__comment_length', 'sum'),
+#             ).reset_index()
+#             df_out['f__comments_set'] = df_out['interview__id'].map(
+#                 df_unit_comment.set_index('interview__id')['f__comments_set']
+#             )
+#             df_out['f__comment_length'] = df_out['interview__id'].map(
+#                 df_unit_comment.set_index('interview__id')['f__comment_length']
+#             )
+#     return df_out
+
+
+# def aggregate_feature_unit__number_answers(
+#     df_unit: pd.DataFrame,
+#     df_active_paradata: pd.DataFrame,
+#     df_questionnaire: pd.DataFrame,
+# ) -> pd.DataFrame:
+#     """Aggregate number-of-distinct-answers feature to unit level (NOT YET PORTED).
+#
+#     Legacy `make_feature_unit__number_answers` in UnitDataProcessing computed the ratio
+#     of distinct variable_names answered per interview over the total question count in
+#     the questionnaire, sourced from df_active_paradata.  The function was already
+#     commented out in the legacy codebase.  Kept commented here for reference.
+#     """
+#     df_out = df_unit.copy()
+#     answer_per_interview_df = (
+#         df_active_paradata.groupby('interview__id')['variable_name']
+#         .nunique()
+#         .reset_index()
+#     )
+#     total_questions = df_questionnaire[
+#         df_questionnaire['qtype'].str.contains('Question')
+#     ]['qtype'].count()
+#     df_out['f__number_answers'] = df_out['interview__id'].map(
+#         answer_per_interview_df.set_index('interview__id')['variable_name'] / total_questions
+#     )
+#     return df_out

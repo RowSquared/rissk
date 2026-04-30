@@ -818,3 +818,50 @@ def calculate_first_digit_score(df_item: pd.DataFrame) -> pd.DataFrame:
                 
     return df
 
+
+# def calculate_last_digit_score(df_item: pd.DataFrame) -> pd.DataFrame:
+#     """Score last-digit anomalies per responsible per variable (NOT YET PORTED).
+#
+#     Legacy `make_score__last_digit` in ItemFeatureProcessing applied Benford-style
+#     p-value tests on the last-digit distribution of numeric responses using a
+#     pivot-table approach.  The item-level scoring was already commented out in the
+#     legacy codebase (see make_score__last_digit in item_processing.py) and the
+#     corresponding unit aggregation make_score_unit__last_digit was a no-op stub
+#     (pass).  Kept commented until the approach is redesigned for the long-format
+#     Kedro pipeline.
+#     """
+#     feature_name = 'f__numeric_response'
+#     score_name = 's__last_digit'
+#     df = df_item.copy()
+#
+#     if feature_name not in df.columns:
+#         return df
+#
+#     valid_data = df[~pd.isnull(df[feature_name])].copy()
+#     # Filter by frequency and order of magnitude, matching legacy pivot-table filtering
+#     valid_variables = filter_variable_name_by_frequency(
+#         valid_data, feature_name, frequency=100, min_unique_values=3
+#     )
+#     valid_variables = filter_variables_by_magnitude(
+#         valid_data, feature_name, valid_variables, min_order_of_magnitude=3
+#     )
+#
+#     df[score_name] = np.nan
+#     for var in valid_variables:
+#         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
+#         if mask.sum() == 0:
+#             continue
+#         # Legacy used apply_benford_tests with p-value threshold of 0.05 to flag
+#         # enumerators whose last-digit distribution deviates significantly from uniform.
+#         results_df = apply_benford_tests(
+#             df[mask], [var], 'responsible', feature_name,
+#             apply_first_digit=False, minimum_sample=50,
+#         )
+#         if results_df is not None and not results_df.empty and 'p-value' in results_df.columns:
+#             score_col = var + '_last_digit'
+#             results_df[score_col] = results_df['p-value'].apply(lambda x: 1 if x <= 0.05 else 0)
+#             responsible_map = results_df.set_index('responsible')[score_col].to_dict()
+#             df.loc[mask, score_name] = df.loc[mask, 'responsible'].map(responsible_map)
+#
+#     return df
+

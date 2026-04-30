@@ -24,8 +24,8 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=filter_extracted_survey_paths_node,
             inputs=[
-                "extracted_survey_folders", # This is where the extracted folders are passed.
-                "params:survey.questionnaires",
+                "extracted_survey_folders",
+                "params:questionnaire",
             ],
             outputs="file_paths",
             name="filter_extracted_survey_paths_node"
