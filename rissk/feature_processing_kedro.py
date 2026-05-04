@@ -303,7 +303,14 @@ def create_base_item_table(microdata: pd.DataFrame, paradata_full: pd.DataFrame,
     Equivalent to FeatureProcessing.make_df_item.
     """
     logger.info("Creating base item table...")
-    
+
+    if microdata.empty:
+        logger.error(
+            "create_base_item_table: microdata is empty — all microdata files were missing "
+            "or contained no data rows. Cannot build item table. Returning empty DataFrame."
+        )
+        return pd.DataFrame()
+
     item_level_columns = ['interview__id', 'variable_name', 'roster_level']
     allowed_features = ['f__' + k for k, v in parameters['features'].items() if v.get('use', False)]
 
@@ -371,6 +378,14 @@ def create_base_unit_table(paradata_full: pd.DataFrame, parameters: dict) -> pd.
     Equivalent to FeatureProcessing.make_df_unit.
     """
     logger.info("Creating base unit table...")
+
+    if paradata_full.empty:
+        logger.error(
+            "create_base_unit_table: paradata_full is empty — no paradata to build unit table from. "
+            "Returning empty DataFrame."
+        )
+        return pd.DataFrame()
+
     allowed_features = ['f__' + k for k, v in parameters['features'].items() if v.get('use', False)]
     
     # 1. Initialize from paradata
@@ -553,6 +568,13 @@ def feat_answer_removed(paradata_full):
     # (all events, role=1, interviewing=True).
     # The legacy method notes this feature may include items no longer in microdata.
     feature_name = 'f__answer_removed'
+
+    if paradata_full.empty or 'event' not in paradata_full.columns:
+        logger.warning(
+            "feat_answer_removed: paradata_full is empty or missing the 'event' column — "
+            "no AnswerRemoved events to process. Returning empty DataFrame."
+        )
+        return pd.DataFrame()
 
     removed_mask = (
         (paradata_full['event'] == 'AnswerRemoved') &

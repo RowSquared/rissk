@@ -85,7 +85,13 @@ def load_paradata_node(file_paths: List[Path]) -> pd.DataFrame:
             try:
                 df_paradata = get_paradata_raw(paradata_path)
                 dfs_paradata.append(df_paradata)
-                logger.info(f"Loaded raw paradata for {survey_questionnaire} v{questionnaires_version}")
+                if df_paradata.empty:
+                    logger.warning(
+                        f"Empty data returned for paradata {survey_questionnaire} v{questionnaires_version}: "
+                        "file may be empty or corrupt"
+                    )
+                else:
+                    logger.info(f"Loaded raw paradata for {survey_questionnaire} v{questionnaires_version}")
             except Exception as e:
                 logger.error(f"Failed to load paradata for {survey_questionnaire} v{questionnaires_version}. Skipping. Error: {str(e)}")
                 continue
@@ -107,6 +113,13 @@ def process_paradata_node(
     interviewing flags, makes the index column, and filters to active interviewer
     events - producing the paradata_processed dataset consumed by feature creation.
     """
+    if paradata_raw.empty:
+        logger.error(
+            "process_paradata_node: paradata_raw is empty — all paradata files were missing "
+            "or contained no data rows. Cannot process paradata. Returning empty DataFrame."
+        )
+        return pd.DataFrame()
+
     paradata = paradata_raw.copy()
 
     # 1. Merge questionnaire metadata
@@ -184,7 +197,13 @@ def load_questionnaire_node(file_paths: List[Path]) -> pd.DataFrame:
             try:
                 df_questionnaires = get_questionnaire(tabular_path)
                 dfs_questionnaires.append(df_questionnaires)
-                logger.info(f"Loaded questionnaire for {survey_questionnaire} v{questionnaires_version}")
+                if df_questionnaires.empty:
+                    logger.warning(
+                        f"Empty data returned for questionnaire {survey_questionnaire} v{questionnaires_version}: "
+                        "file may be empty or corrupt"
+                    )
+                else:
+                    logger.info(f"Loaded questionnaire for {survey_questionnaire} v{questionnaires_version}")
             except Exception as e:
                 logger.error(f"Failed to load questionnaire for {survey_questionnaire} v{questionnaires_version}. Skipping. Error: {str(e)}")
                 continue
@@ -231,7 +250,13 @@ def load_raw_microdata_node(file_paths: List[Path], questionnaire: pd.DataFrame)
                 df_questionnaires = questionnaire[questionnaire['qnr'] == survey_questionnaire]
                 df_microdata = get_microdata_raw(tabular_path, df_questionnaires)
                 dfs_microdata.append(df_microdata)
-                logger.info(f"Loaded raw microdata for {survey_questionnaire} v{questionnaires_version}")
+                if df_microdata.empty:
+                    logger.warning(
+                        f"Empty data returned for microdata {survey_questionnaire} v{questionnaires_version}: "
+                        "file may be empty or corrupt"
+                    )
+                else:
+                    logger.info(f"Loaded raw microdata for {survey_questionnaire} v{questionnaires_version}")
             except Exception as e:
                 logger.error(f"Failed to load raw microdata for {survey_questionnaire} v{questionnaires_version}. Skipping. Error: {str(e)}")
                 continue

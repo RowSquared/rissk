@@ -1,19 +1,19 @@
-name: rissk_py3_13_macos
+name: rissk_kedro
 channels:
   - conda-forge
 dependencies:
   - python=3.13
-  # R Core - 3.13 compatible binaries
+  # R Core - 3.13 compatible binaries (not used in pipeline code)
   - r-base>=4.4
   - r-ggplot2
   - r-dplyr
   - r-tidyr
   - r-readr
   - r-stringr
-  # Graphviz System Deps (Crucial for macOS)
+  # Graphviz System Deps 
   - graphviz
   - python-graphviz
-  - pydot              # Highly recommended for macOS compatibility
+  - pydot              
   - pip
   - pip:
       # Framework
@@ -21,7 +21,10 @@ dependencies:
       - kedro-viz>=12.3.0
       - kedro-datasets[pandas,s3fs,excel,files]>=9.1.0 
       
-      # Core Stack (Optimized for Apple Silicon)
+      # GUI
+      - nicegui>=1.4
+
+      # Core Stack
       - rpy2>=3.6.4          
       - pandas>=2.2.3
       - numpy>=2.1.0         

@@ -47,6 +47,11 @@ def calculate_item_scores(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> 
     ]
     logger.info("\n" + "\n".join(lines))
     logger.info("Calculating Item Scores...")
+
+    if df_item.empty:
+        logger.warning("calculate_item_scores: item features DataFrame is empty — no items to score. Returning empty DataFrame.")
+        return df_item
+
     features = parameters.get('features', {})
     df_scored = df_item
 
@@ -125,6 +130,11 @@ def calculate_unit_scores(
     items deleted from microdata (absent from df_item) are still counted.
     """
     logger.info("Calculating Unit Scores and Global Risk...")
+
+    if df_unit.empty:
+        logger.warning("calculate_unit_scores: unit features DataFrame is empty — no units to score. Returning empty DataFrames.")
+        return pd.DataFrame(), pd.DataFrame()
+
     features = parameters.get('features', {})
 
     # 1. Aggregate item-level scores up to unit level.
