@@ -54,16 +54,16 @@ uv sync --extra gui
 
 ### 4. Launch the GUI
 
-Run from the repo root (`rissk/`) or from inside `rissk_kedro/` — both work:
+From the `rissk_kedro/` directory:
 
 **macOS / Linux:**
 ```bash
-bash run_gui.sh
+bash rissk_kedro/run_gui.sh
 ```
 
 **Windows:**
 ```bat
-run_gui.bat
+rissk_kedro\run_gui.bat
 ```
 
 Your browser will open automatically at **http://localhost:8080**.
@@ -82,7 +82,7 @@ cd rissk
 ### 2. Create and activate the conda environment
 
 ```bash
-conda env create -f environment_kedro.yml
+conda env create -f environment.yml
 conda activate rissk_kedro
 ```
 
@@ -90,11 +90,11 @@ This installs Python 3.13, all pipeline dependencies, and the RISSK package in o
 
 ### 3. Launch the GUI
 
-Run from inside `rissk_kedro/`:
+From the `rissk_kedro/` directory:
 
 ```bash
-bash run_gui.sh        # macOS / Linux
-run_gui.bat            # Windows
+bash rissk_kedro/run_gui.sh        # macOS / Linux
+rissk_kedro\run_gui.bat            # Windows
 ```
 
 ---
@@ -145,7 +145,7 @@ To switch to a different questionnaire, update the name in the Setup tab and sav
 
 Results are written to:
 ```
-<data_root>/<questionnaire_name>/latest/40_SCORED/unit_risk_scores.csv
+<data_root>/<questionnaire_name>/latest/40_SCORED/unit_rissk_scores.csv
 ```
 
 ### Advanced settings
