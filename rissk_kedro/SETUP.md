@@ -54,6 +54,8 @@ uv sync --extra gui
 
 ### 4. Launch the GUI
 
+Run from the repo root (`rissk/`) or from inside `rissk_kedro/` — both work:
+
 **macOS / Linux:**
 ```bash
 bash run_gui.sh
@@ -87,6 +89,8 @@ conda activate rissk_kedro
 This installs Python 3.13, all pipeline dependencies, and the RISSK package in one step.
 
 ### 3. Launch the GUI
+
+Run from inside `rissk_kedro/`:
 
 ```bash
 bash run_gui.sh        # macOS / Linux
@@ -160,7 +164,6 @@ Experienced users can run Kedro directly from the `rissk_kedro/` directory:
 ```bash
 cd rissk_kedro
 
-```bash
 # Full pipeline
 kedro run
 
