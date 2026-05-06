@@ -23,7 +23,6 @@ pythresh>=0.3.6
 nicegui>=1.4
 
 # --- Logging / progress ---
-loguru>=0.7.3
 tqdm>=4.67.0
 
 # --- Config ---
