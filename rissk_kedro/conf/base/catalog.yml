@@ -70,9 +70,9 @@ item_scores:
   type: pandas.ParquetDataset
   filepath: ${globals:data_root}/${globals:questionnaire.name}/latest/40_SCORED/item_scores.parquet
 
-unit_risk_scores:
+unit_rissk_scores:
   type: pandas.CSVDataset
-  filepath: ${globals:data_root}/${globals:questionnaire.name}/latest/40_SCORED/unit_risk_scores.csv
+  filepath: ${globals:data_root}/${globals:questionnaire.name}/latest/40_SCORED/unit_rissk_scores.csv
 
 responsible_scores:
   type: pandas.CSVDataset

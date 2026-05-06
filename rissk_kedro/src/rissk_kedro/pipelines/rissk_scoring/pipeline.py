@@ -38,7 +38,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             # including those for items deleted from microdata,
             # matching legacy make_score_unit__answer_removed behaviour.
             inputs=["unit_features_filtered", "item_scores", "parameters", "removed_answers_filtered"],
-            outputs=["unit_risk_scores", "responsible_scores"],
+            outputs=["unit_rissk_scores", "responsible_scores"],
             name="calculate_unit_scores_node",
         ),
     ])

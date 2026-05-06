@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from typing import Dict, Any, Tuple
 import logging
 
@@ -219,8 +220,31 @@ def calculate_unit_scores(
     feature_cols = [c for c in df_unit_final.columns if c.startswith('f__')]
     df_unit_final = df_unit_final.drop(columns=feature_cols)
 
-    # Add qnr as the first column of the responsible scores output.
-    if qnr_name is not None and 'qnr' not in df_resp.columns:
-        df_resp.insert(0, 'qnr', qnr_name)
+    # Always ensure responsible_score is present (may be absent when PCA was skipped).
+    if 'responsible_score' not in df_unit_final.columns:
+        df_unit_final['responsible_score'] = np.nan
+
+    # Apply column ordering for unit_rissk_scores:
+    #   interview__id, qnr, responsible, qnr_version, unit_risk_score, responsible_score,
+    #   IForest s__ cols, responsible s__ cols, any remaining cols.
+    lead_cols = ['interview__id', 'qnr', 'responsible', 'qnr_version', 'unit_risk_score', 'responsible_score']
+    iforest_s = [c for c in score_columns if c in df_unit_final.columns]
+    resp_s_ordered_unit = [c for c in resp_s_cols if c in df_unit_final.columns]
+    ordered_unit = [c for c in lead_cols if c in df_unit_final.columns]
+    ordered_unit += iforest_s
+    ordered_unit += [c for c in resp_s_ordered_unit if c not in ordered_unit]
+    ordered_unit += [c for c in df_unit_final.columns if c not in ordered_unit]
+    df_unit_final = df_unit_final[ordered_unit]
+
+    # Apply column ordering for responsible_scores: responsible, responsible_score, s__ cols.
+    # qnr is intentionally excluded from the responsible_scores output.
+    if 'responsible_score' not in df_resp.columns:
+        df_resp['responsible_score'] = np.nan
+    resp_lead = ['responsible', 'responsible_score']
+    resp_s_ordered = [c for c in df_resp.columns if c.startswith('s__')]
+    ordered_resp = [c for c in resp_lead if c in df_resp.columns]
+    ordered_resp += resp_s_ordered
+    ordered_resp += [c for c in df_resp.columns if c not in ordered_resp and c != 'qnr']
+    df_resp = df_resp[ordered_resp]
 
     return df_unit_final, df_resp
