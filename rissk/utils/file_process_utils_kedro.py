@@ -126,7 +126,8 @@ def transform_multi(df, variable_list, transformation_type):
                 return clean_sub
 
             transformation = [remove_unset_value(x)
-                              if x else float('nan') for x in transformation] if transformation_type != 'gps' else [
+                              if x else ('##N/A##' if transformation_type == 'list' else float('nan'))
+                              for x in transformation] if transformation_type != 'gps' else [
                 x if x else '' for x in transformation]
             transformed_df[var] = transformation  # Add the transformation to the transformed DataFrame
             df = df.drop(related_cols, axis=1)  # Drop the original columns

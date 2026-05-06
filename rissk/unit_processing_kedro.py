@@ -91,20 +91,20 @@ def calculate_global_score(df_unit_scores: pd.DataFrame, df_resp_scores: pd.Data
     df_unit['unit_risk_score'] = scaler.fit_transform(df_unit[['unit_risk_score']])
 
     # Merge unit score with responsible score.
-    # Only apply the multiplication when responsible_score has actual variance — if PCA
-    # on the responsible-level scores couldn't run (too few enumerators or all scores
-    # constant), responsible_score is all-zero, and multiplying produces a constant-zero
-    # column that MinMaxScaler turns into NaN for every interview.
+    # Only apply the multiplication when responsible_score was successfully computed
+    # (not all-NaN) and has actual variance. If PCA couldn't run (too few columns or
+    # all scores constant), responsible_score is NaN — multiplying would wipe out all
+    # IForest-derived unit scores.
     if combine_resp_score and 'responsible' in df_unit.columns and df_resp_scores is not None and 'responsible_score' in df_resp_scores.columns:
         resp_score_series = df_resp_scores['responsible_score']
-        if resp_score_series.nunique() > 1:
+        if resp_score_series.notna().any() and resp_score_series.nunique() > 1:
             df_resp_map = df_resp_scores.set_index('responsible')['responsible_score'].to_dict()
-            df_unit['responsible_score'] = df_unit['responsible'].map(df_resp_map).fillna(0)
+            df_unit['responsible_score'] = df_unit['responsible'].map(df_resp_map)
             df_unit['unit_risk_score'] = df_unit['unit_risk_score'] * df_unit['responsible_score']
             df_unit['unit_risk_score'] = scaler.fit_transform(df_unit[['unit_risk_score']])
         else:
             logger.warning(
-                "responsible_score has no variance (likely too few enumerators or all scores constant); "
+                "responsible_score is NaN or has no variance (likely too few enumerators or all scores constant); "
                 "skipping responsible-score multiplication to preserve interview-level unit_risk_score."
             )
 
@@ -264,7 +264,7 @@ def calculate_responsible_score(df_resp_features: pd.DataFrame, restricted_colum
     columns = [col for col in df_resp.columns if not col.startswith('responsible') and (not restricted_columns or col not in restricted_columns)]
     
     if not columns:
-        df_resp['responsible_score'] = 0.0
+        df_resp['responsible_score'] = np.nan
         return df_resp
 
     df_grouped = df_resp.groupby('responsible')[columns].mean().reset_index()
@@ -273,14 +273,14 @@ def calculate_responsible_score(df_resp_features: pd.DataFrame, restricted_colum
     df_pca_input = df_pca_input.loc[:, df_pca_input.nunique() != 1]
     
     if df_pca_input.empty:
-         df_resp['responsible_score'] = 0.0
+         df_resp['responsible_score'] = np.nan
          return df_resp
 
     # PCA-based outlier scoring requires at least 2 varying columns to be meaningful:
     # with only 1 component there are no minor eigenvectors to compute weighted
     # reconstruction error against, so all scores would be identical.
     if df_pca_input.shape[1] < 2:
-        df_resp['responsible_score'] = 0.0
+        df_resp['responsible_score'] = np.nan
         return df_resp
          
     df_pca_scaled = pd.DataFrame(scaler.fit_transform(df_pca_input), columns=df_pca_input.columns)

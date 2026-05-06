@@ -135,9 +135,9 @@ def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd
     # Everything that has 0,0 as coordinates is considered an extreme outlier
     # (devices sometimes report 0,0 when a fix failed); mark these explicitly
     # so they can be excluded from median/distance calculations.
-    data['s__gps_extreme_outlier'] = 0
-    data.loc[data['f__gps_latitude'] == 0.0, 's__gps_extreme_outlier'] = 1
-    data.loc[data['f__gps_longitude'] == 0.0, 's__gps_extreme_outlier'] = 1
+    data['s__gps_extreme_outlier'] = (
+        (data['f__gps_latitude'] == 0.0) & (data['f__gps_longitude'] == 0.0)
+    ).astype(int)
 
     # Convert lat/lon into 3D Cartesian coordinates on a sphere (units = km).
     # Using Cartesian coords lets KDTree operate in Euclidean space instead of
