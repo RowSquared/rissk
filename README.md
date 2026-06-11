@@ -43,7 +43,7 @@ cd rissk
 ```
 3. **Install dependencies**:
 ```bash
-uv sync --extra gui
+uv sync --extra gui --all-packages
 ```
 4. **Launch the GUI**:
 ```bash

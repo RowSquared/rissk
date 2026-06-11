@@ -2512,6 +2512,21 @@ asyncio-client = [
 ]
 
 [[package]]
+name = "pythresh"
+version = "1.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pyod" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b1/20/8348133fcbac44cb79b074eb89c5dbc41a5bab659b38ec620a931b999950/pythresh-1.1.1.tar.gz", hash = "sha256:868f78448eeeed6b3ab2d22c1e01ffb56fe7d1a7bf94486468e456ae3f327253", size = 571400, upload-time = "2026-06-05T18:29:50.55Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f2/69/85867a6cda0d6f3d595636a43ed167a04d7a8123bcdf110600219d2fca33/pythresh-1.1.1-py3-none-any.whl", hash = "sha256:a4283eaa383d9acd9705c8c90deb09393abf0eb131dc89218d682bd36e8c69d7", size = 578340, upload-time = "2026-06-05T18:29:49.107Z" },
+]
+
+[[package]]
 name = "pyyaml"
 version = "6.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2628,6 +2643,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyod" },
+    { name = "pythresh" },
     { name = "pyyaml" },
     { name = "rissk" },
     { name = "scikit-learn" },
@@ -2649,6 +2665,7 @@ requires-dist = [
     { name = "pyod", specifier = ">=1.1.5" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'test'" },
+    { name = "pythresh", specifier = ">=0.3.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rissk", editable = "." },
     { name = "scikit-learn", specifier = ">=1.5" },

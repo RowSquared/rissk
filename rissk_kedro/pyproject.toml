@@ -2,6 +2,9 @@
 requires = ["flit_core >=3.2,<4"]
 build-backend = "flit_core.buildapi"
 
+[tool.flit.module]
+name = "rissk_kedro"
+
 [project]
 # NOTE: named "rissk-pipeline" to avoid collision with the root "rissk" ML package
 # in the uv workspace. The installed Python package is still "rissk_kedro".
@@ -9,7 +12,7 @@ name = "rissk-pipeline"
 version = "0.1.2"
 description = "Kedro pipeline for RISSK — Survey Quality Control."
 authors = [{ name = "rowsquared" }]
-license = { file = "LICENSE" }
+license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.13"
 classifiers = [
@@ -28,6 +31,7 @@ dependencies = [
     "scipy>=1.10",
     "scikit-learn>=1.5",
     "pyyaml>=6.0",
+    "pythresh>=0.3.0",
 ]
 
 [project.optional-dependencies]
