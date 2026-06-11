@@ -256,8 +256,11 @@ def calculate_sequence_jump_score(df_item: pd.DataFrame, parameters: Dict[str, A
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
         if mask.sum() > 0:
             model = INNE(contamination=contamination, random_state=42)
-            model.fit(df.loc[mask, [feature_name]])
-            df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+            try:
+                model.fit(df.loc[mask, [feature_name]])
+                df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+            except (ValueError, FloatingPointError):
+                df.loc[mask, score_name] = 0
 
     return df
 
@@ -317,8 +320,11 @@ def calculate_first_decimals_score(df_item: pd.DataFrame, parameters: Dict[str, 
                     category=RuntimeWarning,
                     module=r'numpy\._core\._methods',
                 )
-                model.fit(df.loc[mask, [feature_name]])
-                df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+                try:
+                    model.fit(df.loc[mask, [feature_name]])
+                    df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+                except (ValueError, FloatingPointError):
+                    df.loc[mask, score_name] = 0
             
     return df
 
@@ -361,8 +367,11 @@ def calculate_answer_hour_set_score(df_item: pd.DataFrame, parameters: Dict[str,
     )
 
     model = ECOD(contamination=contamination)
-    model.fit(df[[feature_name]])
-    df[score_name] = model.predict(df[[feature_name]])
+    try:
+        model.fit(df[[feature_name]])
+        df[score_name] = model.predict(df[[feature_name]])
+    except (ValueError, FloatingPointError):
+        df[score_name] = 0
 
     # Revert high-frequency hours that ECOD incorrectly flagged as anomalies.
     # Guard against the degenerate case where every row is an outlier (no inliers),
@@ -411,8 +420,13 @@ def calculate_answer_changed_score(df_item: pd.DataFrame, parameters: Dict[str, 
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
         if mask.sum() > 0:
             model = ECOD(contamination=contamination)
-            model.fit(df.loc[mask, [feature_name]])
-            df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+            try:
+                model.fit(df.loc[mask, [feature_name]])
+                df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+            except (ValueError, FloatingPointError):
+                # Zero-variance data causes pythresh FILTER to produce NaN sigma
+                # which crashes on round(NaN). Treat constant data as all inliers.
+                df.loc[mask, score_name] = 0
             
     return df
 
@@ -470,8 +484,11 @@ def calculate_answer_removed_score_from_df(
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
         if mask.sum() > 0:
             model = ECOD(contamination=contamination)
-            model.fit(df.loc[mask, [feature_name]])
-            df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+            try:
+                model.fit(df.loc[mask, [feature_name]])
+                df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+            except (ValueError, FloatingPointError):
+                df.loc[mask, score_name] = 0
 
     return df.groupby('interview__id')[score_name].mean()
 
@@ -561,9 +578,12 @@ def calculate_answer_selected_score(df_item: pd.DataFrame, parameters: Dict[str,
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
         if mask.sum() > 0:
             model = ECOD(contamination=contamination)
-            model.fit(df.loc[mask, [feature_name]])
-            
-            df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+            try:
+                model.fit(df.loc[mask, [feature_name]])
+                df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+            except (ValueError, FloatingPointError):
+                df.loc[mask, score_name] = 0
+                continue
             non_anomalies = df.loc[mask & (df[score_name] == 0), feature_name]
             
             if not non_anomalies.empty:
@@ -620,8 +640,12 @@ def calculate_answer_duration_score(df_item: pd.DataFrame, parameters: Dict[str,
         mask = (df['variable_name'] == var) & (~pd.isnull(df[feature_name]))
         if mask.sum() > 0:
             model = ECOD(contamination=contamination)
-            model.fit(df.loc[mask, [feature_name]])
-            df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+            try:
+                model.fit(df.loc[mask, [feature_name]])
+                df.loc[mask, score_name] = model.predict(df.loc[mask, [feature_name]])
+            except (ValueError, FloatingPointError):
+                df.loc[mask, score_name] = 0
+                continue
 
             non_anomalies = df.loc[mask & (df[score_name] == 0), feature_name]
             if not non_anomalies.empty:
