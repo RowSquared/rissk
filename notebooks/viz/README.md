@@ -3,7 +3,7 @@
 Three interactive [marimo](https://marimo.io) notebooks for exploring a scored run.
 They read **only** the pipeline outputs under
 `<data_root>/<questionnaire>/latest/` (via `rissk_kedro.viz`) — run the pipeline
-first (e.g. through `notebooks/rissk_readme.ipynb` or the GUI) so there is data to show.
+first (e.g. through `rissk_readme.ipynb` or the GUI) so there is data to show.
 
 | Notebook | Level | Shows |
 |---|---|---|

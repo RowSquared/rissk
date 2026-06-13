@@ -8,7 +8,7 @@ Reads a per-survey *run-configuration* YAML and, for each questionnaire in it:
 4. summarises the scored outputs,
 5. (optional) syncs the generated stages back to S3 and cleans local data.
 
-The notebook ``notebooks/rissk_readme.ipynb`` only chooses *which* config file
+The notebook ``rissk_readme.ipynb`` (repo root) only chooses *which* config file
 to load (``run(CONFIG_FILE)``); all logic lives here so the notebook stays
 trivially readable. Run configs are plain YAML — see ``notebooks/configs/``.
 """

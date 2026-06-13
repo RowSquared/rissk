@@ -1,4 +1,4 @@
-# Template run configuration for notebooks/rissk_readme.ipynb.
+# Template run configuration for rissk_readme.ipynb.
 # Copy per survey (e.g. fbf.yaml) and schedule the notebook with the single
 # Notebook Jobs parameter:  CONFIG_FILE = "notebooks/configs/fbf.yaml"
 # Absolute paths work too, so configs kept outside git are fine.

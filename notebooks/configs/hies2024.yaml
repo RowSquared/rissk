@@ -1,5 +1,5 @@
 # RISSK driver-notebook run configuration — hies2024
-# Used by notebooks/rissk_readme.ipynb: schedule the notebook with the single
+# Used by rissk_readme.ipynb: schedule the notebook with the single
 # job parameter  CONFIG_FILE = "notebooks/configs/hies2024.yaml"
 SURVEY: hies2024
 QUESTIONNAIRES:
