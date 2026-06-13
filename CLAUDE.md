@@ -22,8 +22,9 @@ This repo is a single `uv` workspace (`[tool.uv.workspace]` in `pyproject.toml`)
 All dependency and run commands assume the repo root unless noted.
 
 ```bash
-# Install (root) — installs both workspace packages + GUI extra
-uv sync --extra gui
+# Install (root) — both workspace packages + GUI & viz extras.
+# --all-packages is REQUIRED: plain `uv sync` prunes the rissk_kedro member (kedro, pyarrow, …).
+uv sync --all-packages --extra gui --extra viz
 
 # Launch the GUI (NiceGUI, opens http://localhost:8080)
 bash rissk_kedro/run_gui.sh            # macOS / Linux
@@ -38,6 +39,9 @@ kedro run --pipeline rissk_scoring
 
 # Visualise the pipeline DAG
 cd rissk_kedro && kedro viz
+
+# Explore scores interactively (marimo, opens a browser) — needs the viz extra
+uv run marimo edit notebooks/viz/unit_scores.py   # also: feature_scores.py, interview_scores.py
 
 # Tests (pytest is configured via the `test` extra; testpaths = rissk_kedro/tests)
 uv sync --extra test
@@ -87,6 +91,8 @@ Scoring (per `README.md` "Process description"): item/unit features → Type 1/2
 ### GUI
 
 `rissk_kedro/app/main.py` is a NiceGUI app. It reads `conf/base` + `conf/local`, writes user choices to **`conf/local/globals.yml` and `conf/local/parameters.yml`**, and runs the pipeline by shelling out to `python -m kedro run` (`asyncio.create_subprocess_exec`), streaming logs to the browser. `conf/local/` is written by the GUI and by the headless driver `rissk_kedro/src/rissk_kedro/driver.py`. The driver is the scheduled-run path: `notebooks/rissk_readme.ipynb` is a thin shell that sets one `CONFIG_FILE` parameter and calls `rissk_kedro.driver.run(CONFIG_FILE)`. `run` reads a per-survey run-config YAML (`notebooks/configs/*.yaml` — survey, questionnaires, which pipelines, S3/sync flags), and for each questionnaire writes `conf/local` (same keys/structure as the GUI) and executes the selected pipelines **in-process via `KedroSession`** (no CLI). Unlike the GUI, which shells out to `python -m kedro run`, the notebook never invokes the CLI.
+
+Interactive result-exploration notebooks live in `notebooks/viz/` (three [marimo](https://marimo.io) apps: `feature_scores.py`, `unit_scores.py`, `interview_scores.py`), backed by the read-only loaders in `rissk_kedro/src/rissk_kedro/viz.py`. They read the pipeline's output files only and import nothing from `rissk/` — the right home for *new* viz/helper code (treat `rissk/` as legacy-origin: read its outputs, don't extend it).
 
 ## Project conventions
 

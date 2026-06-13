@@ -94,6 +94,17 @@ For unattended execution (e.g. via the JupyterHub *Notebook Jobs* plugin), use t
 
 The notebook never needs editing between surveys: schedule the same file once per survey, overriding only the `CONFIG_FILE` job parameter in the Notebook Jobs *Parameters* form (e.g. `CONFIG_FILE = "notebooks/configs/fbf.yaml"`). See [notebooks/configs/example.yaml](notebooks/configs/example.yaml) for the template.
 
+### Visualising the scores
+
+Three interactive [marimo](https://marimo.io) notebooks in [notebooks/viz/](notebooks/viz/) explore a scored run — `feature_scores.py` (per-feature distributions), `unit_scores.py` (the 0–100 unit risk score across interviews) and `interview_scores.py` (single-interview drill-down). Install the extra and launch one in the browser:
+
+```bash
+uv sync --all-packages --extra viz
+uv run marimo edit notebooks/viz/unit_scores.py
+```
+
+Each notebook starts with a questionnaire dropdown that scans the data root, so it picks up whichever runs you have locally. See [notebooks/viz/README.md](notebooks/viz/README.md) for details.
+
 # Advanced use
 
 ## Exporting feature scores

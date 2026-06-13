@@ -272,3 +272,6 @@ markdown_docs/
 requirements_legacy.txt
 rissk_kedro/notebooks/
 rissk/utils/testing_utils.py
+
+# marimo layout/cache artifacts
+__marimo__/

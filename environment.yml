@@ -24,6 +24,10 @@ dependencies:
       # GUI
       - nicegui>=1.4
 
+      # Visualisation notebooks (notebooks/viz/)
+      - marimo>=0.9
+      - altair>=5.0
+
       # Core Stack
       - rpy2>=3.6.4          
       - pandas>=2.2.3

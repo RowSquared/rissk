@@ -33,6 +33,12 @@ gui = [
     "nicegui>=1.4",
 ]
 
+# Interactive visualisation notebooks (notebooks/viz/). Install with: uv sync --extra viz
+viz = [
+    "marimo>=0.9",
+    "altair>=5.0",
+]
+
 # uv workspace: rissk_kedro/ is a member so `uv sync` installs both packages together.
 [tool.uv.workspace]
 members = ["rissk_kedro"]
