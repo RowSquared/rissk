@@ -257,33 +257,52 @@ def update_df_categories(row, categories):
         row['answer_sequence'] = match['answer_sequence']
     return row
 
+# Survey Solutions export naming. Filenames follow
+#   <questionnaire>_<version>_<format>[_Reduced]_<status>[_<timestamp>]
+# The optional "Reduced" infix (newer paradata export option) and the optional
+# trailing export timestamp (e.g. 20260611T1347Z) were added by recent SuSo
+# versions; anchoring the format and status tokens lets us recognise and discard
+# both instead of mis-capturing them as the format/status (which silently dropped
+# the paradata export — see tests/test_filename_parsing.py).
+EXPORT_FORMATS = ("Tabular", "STATA", "SPSS", "Paradata")
+# Longest-first so the alternation never settles on a prefix (e.g. "Approved").
+INTERVIEW_STATUSES = (
+    "ApprovedByHeadquarters", "ApprovedBySupervisor", "ApprovedByHQ",
+    "InterviewerAssigned", "Approved", "All",
+)
+
+_EXPORT_FILENAME_RE = re.compile(
+    rf"^(?P<questionnaire>.+)_(?P<version>[0-9]+)"
+    rf"_(?P<format>{'|'.join(EXPORT_FORMATS)})(?:_Reduced)?"
+    rf"_(?P<status>{'|'.join(INTERVIEW_STATUSES)})(?:_.+)?$"
+)
+
+
 def parse_filename(filename: str):
     """
-    Parses a filename based on the pattern <QUESTIONAIRE>_<VERSION>_<FORMAT>_<STATUS>.
+    Parses a Survey Solutions export name into [questionnaire, version, format, status].
+
+    Handles the classic ``<name>_<version>_<format>_<status>`` convention as well
+    as the newer paradata exports that insert a ``Reduced`` flag and/or append an
+    export timestamp (``..._Paradata_Reduced_All_20260611T1347Z``); the flag and
+    timestamp are recognised and discarded.
 
     Parameters:
-    filename (str): The filename to parse.
+    filename (str): The filename (export folder/file name) to parse.
 
     Returns:
-    dict: A dictionary containing 'questionnaire', 'version', 'format', and 'status'.
+    list: [questionnaire, version, format, status].
     """
-    # Regex pattern to match the filename structure
-    pattern = r"^(?P<questionnaire>.+)_(?P<version>[0-9]+)_(?P<format>.+)_(?P<status>.+)$"
-    
-    match = re.match(pattern, filename)
+    match = _EXPORT_FILENAME_RE.match(filename)
     if not match:
         raise ValueError(f"Filename '{filename}' does not match the expected pattern.")
-    
-    components = match.groupdict()
 
-    # Extract components as a list
-    components = [
+    return [
         match.group('questionnaire'),
         match.group('version'),
         match.group('format'),
-        match.group('status')
+        match.group('status'),
     ]
-    return components
 
 
 def get_file_parts(filename):

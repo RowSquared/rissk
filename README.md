@@ -88,6 +88,12 @@ Export both files from the **same questionnaire version** consecutively. For mul
 kedro run
 ```
 
+## Scheduled / headless runs (JupyterHub)
+
+For unattended execution (e.g. via the JupyterHub *Notebook Jobs* plugin), use the driver notebook [notebooks/rissk_readme.ipynb](notebooks/rissk_readme.ipynb). It replaces the GUI entirely, and all logic lives in `rissk_kedro.driver.run` — the notebook itself is just `run(CONFIG_FILE)`. A per-survey run-config YAML in [notebooks/configs/](notebooks/configs/) (the equivalent of the legacy `env.yaml`) sets the S3 survey folder, the questionnaires/versions, and which of the three pipelines (`data_ingestion`, `feature_creation`, `rissk_scoring`) to execute. The driver syncs the export zips down from S3, runs the selected pipelines **in-process** (via `KedroSession`, no command line) once per questionnaire, syncs the generated stages back to `s3://<bucket>/<survey>/latest/<questionnaire>/`, and optionally deletes the local data afterwards.
+
+The notebook never needs editing between surveys: schedule the same file once per survey, overriding only the `CONFIG_FILE` job parameter in the Notebook Jobs *Parameters* form (e.g. `CONFIG_FILE = "notebooks/configs/fbf.yaml"`). See [notebooks/configs/example.yaml](notebooks/configs/example.yaml) for the template.
+
 # Advanced use
 
 ## Exporting feature scores
