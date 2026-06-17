@@ -1,6 +1,6 @@
 # RISSK: Kedro Pipeline vs Legacy — Full Changelog
 
-This document details every meaningful change between the legacy Ploomber/Python 3.9 pipeline (`rissk/`) and the new Kedro pipeline (`rissk_kedro/`). Changes are separated into **architectural changes**, **intentional behavioural changes**, and **bug fixes**.
+This document details every meaningful change between the legacy Ploomber/Python 3.9 pipeline (`rissk/`) and the new Kedro pipeline (`rissk`). Changes are separated into **architectural changes**, **intentional behavioural changes**, and **bug fixes**.
 
 ---
 

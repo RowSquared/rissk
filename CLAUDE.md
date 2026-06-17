@@ -6,97 +6,99 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 RISSK generates a **Unit Risk Score (URS, 0–100)** for each interview in a [Survey Solutions](https://mysurvey.solutions/) export, flagging interviews likely to contain unwanted interviewer behaviour. It is a Kedro pipeline that ingests Survey Solutions ZIP exports (Main Survey Data + Paradata), engineers features from microdata and paradata, and runs anomaly-detection models to produce the score. See `README.md` for the methodology and `FEATURES_SCORES.md` for per-feature definitions.
 
-## Repository layout — two-package uv workspace
+## Repository layout — single `rissk` package
 
-This repo is a single `uv` workspace (`[tool.uv.workspace]` in `pyproject.toml`) with **two installed packages**:
+This is a standalone Kedro project rooted at the repo root: `pyproject.toml` (with `[tool.kedro]`), `conf/`, `tests/`, `app/` (GUI), and the package under `src/rissk/`. One package holds **both** the Kedro project *and* the ML/data logic:
 
-- **`rissk/`** (package `rissk`) — the pure ML / data-processing logic. No Kedro dependency. All modules carry a `*_kedro.py` suffix: `feature_processing_kedro.py`, `item_processing_kedro.py`, `unit_processing_kedro.py`, `detection_algorithms_kedro.py`, plus `utils/` (`import_utils_kedro.py`, `file_process_utils_kedro.py`, `stats_utils_kedro.py`). **This is where the real work lives** — feature engineering, scoring functions, and Survey Solutions import logic.
-- **`rissk_kedro/`** (package `rissk-pipeline`, imported as `rissk_kedro`) — the Kedro project: pipeline/node definitions, Data Catalog, configuration, and the GUI.
+- **Kedro project** — `src/rissk/pipelines/`, `datasets/`, `pipeline_registry.py`, `settings.py`; config under `conf/`; the GUI under `app/`.
+- **ML / data logic** (where the real work lives — feature engineering, scoring functions, Survey Solutions import) — `src/rissk/core/` (`feature_processing.py`, `item_processing.py`, `unit_processing.py`, `detection_algorithms.py`) and `src/rissk/utils/` (`import_utils.py`, `file_process_utils.py`, `stats_utils.py`, plus `storage.py` — the s3/local zip-staging helper).
 
-**Nodes are thin wrappers.** Each `rissk_kedro/.../pipelines/*/nodes.py` imports functions from `rissk.*_kedro` and adapts them to Kedro's input/output contract (logging, empty-data guards). When changing pipeline *behaviour*, edit the function in `rissk/`; edit the node only for wiring, logging, or guards.
+**Nodes are thin wrappers.** Each `src/rissk/pipelines/*/nodes.py` imports functions from `rissk.core.*` / `rissk.utils.*` and adapts them to Kedro's input/output contract (logging, empty-data guards). When changing pipeline *behaviour*, edit the underlying module; edit the node only for wiring, logging, or guards.
 
-> The `_kedro` suffix is historical. A legacy Ploomber/OOP pipeline once lived alongside these files and was removed (see git history); the `*_kedro.py` files are now the **only** implementation. `Kedro_vs_Legacy_Changelog.md` documents every intentional behavioural difference and bug fix versus that removed legacy code — consult it before "fixing" something that looks deliberately changed (e.g. NaN-vs-0 score init, GPS unit conversions, sentinel filtering).
+> History: the ML logic and the Kedro project used to be two packages (`rissk` + `rissk_kedro`) in a uv workspace, and the modules carried a `*_kedro.py` suffix (distinguishing them from a since-removed legacy Ploomber pipeline). Both the workspace split and the suffix are gone — it's one `rissk` package now (the conda env + Jupyter kernel keep the name `rissk_kedro`). `Kedro_vs_Legacy_Changelog.md` still documents every intentional behavioural difference vs that removed legacy code — consult it before "fixing" something that looks deliberately changed (e.g. NaN-vs-0 score init, GPS unit conversions, sentinel filtering).
 
 ## Commands
 
 All dependency and run commands assume the repo root unless noted.
 
 ```bash
-# Install (root) — both workspace packages + GUI & viz extras.
-# --all-packages is REQUIRED: plain `uv sync` prunes the rissk_kedro member (kedro, pyarrow, …).
-uv sync --all-packages --extra gui --extra viz
+# Install — the rissk package + GUI & viz extras.
+uv sync --extra gui --extra viz
 
 # Launch the GUI (NiceGUI, opens http://localhost:8080)
-bash rissk_kedro/run_gui.sh            # macOS / Linux
-rissk_kedro\run_gui.bat                # Windows
+bash run_gui.sh            # macOS / Linux
+run_gui.bat                # Windows
 
-# Run the pipeline from the CLI (must cd into the Kedro project)
-cd rissk_kedro
-kedro run                              # full pipeline (__default__)
-kedro run --pipeline data_ingestion    # individual stages:
-kedro run --pipeline feature_creation  #   data_ingestion → feature_creation → rissk_scoring
-kedro run --pipeline rissk_scoring
+# Run the pipeline from the CLI (from the repo root).
+# --env <config> is REQUIRED: it selects a committed config env (conf/<config>/globals.yml);
+# a bare `kedro run` uses the empty conf/base defaults and processes no data.
+kedro run --env <config>                              # full pipeline (__default__)
+kedro run --env <config> --pipeline data_ingestion    # individual stages:
+kedro run --env <config> --pipeline feature_creation  #   data_ingestion → feature_creation → rissk_scoring
+kedro run --env <config> --pipeline rissk_scoring
 
 # Visualise the pipeline DAG
-cd rissk_kedro && kedro viz
+kedro viz
 
 # Explore scores interactively (marimo, opens a browser) — needs the viz extra
 uv run marimo edit notebooks/viz/unit_scores.py   # also: feature_scores.py, interview_scores.py
 
-# Tests (pytest is configured via the `test` extra; testpaths = rissk_kedro/tests)
+# Tests (pytest is configured via the `test` extra; testpaths = tests)
 uv sync --extra test
-cd rissk_kedro && pytest               # run all
-cd rissk_kedro && pytest tests/path/to/test_x.py::test_name   # single test
+pytest               # run all
+pytest tests/path/to/test_x.py::test_name   # single test
 ```
 
-`kedro` commands **only work from inside `rissk_kedro/`** (that is where `pyproject.toml` declares `[tool.kedro]`). conda users: the equivalent install is `conda env create -f environment.yml && conda activate rissk_kedro`.
+`kedro` commands run **from the repo root** (where `pyproject.toml` declares `[tool.kedro]`). conda users: the equivalent install is `conda env create -f environment.yml && conda activate rissk_kedro`.
 
 ## Architecture
 
 ### Pipeline graph and data stages
 
-Three pipelines run in sequence (registered in `rissk_kedro/src/rissk_kedro/pipeline_registry.py`):
+Three pipelines run in sequence (registered in `src/rissk/pipeline_registry.py`):
 
 ```
 data_ingestion → feature_creation → rissk_scoring
 ```
 
-Data flows **only** through the Kedro Data Catalog (`conf/base/catalog.yml`) — nodes are pure functions with no shared state; no node does its own `to_csv`/`open`. Datasets land in numbered stage folders under each questionnaire:
+Data flows **only** through the Kedro Data Catalog (`conf/base/catalog.yml`) — nodes are pure functions with no shared state; no node does its own `to_csv`/`open`. Datasets are keyed by `<survey>`; `10_RAW` (zips + extraction) lives under the always-local `work_root`, stages 20→40 under `output_root` (local or `s3://`):
 
 ```
-<data_root>/<questionnaire.name>/latest/
-    10_RAW/        # input ZIPs + extracted folders (PartitionedDataset of PathDataset)
+<work_root>/<survey>/latest/10_RAW/   # staged ZIPs + extracted folders (PathDataset)
+<output_root>/<survey>/latest/
     20_INTERIM/    # raw paradata/microdata, base feature tables
     30_PROCESSED/  # processed paradata/microdata, final feature tables
     40_SCORED/     # item_scores.parquet, unit_rissk_scores.csv  ← final output
 ```
 
-`rissk_kedro/src/rissk_kedro/datasets/path.py` defines `PathDataset`, a custom dataset that returns a `Path` (used so the unzip node can operate on files/dirs directly rather than loading content).
+`src/rissk/datasets/path.py` defines `PathDataset`, a custom dataset that returns a `Path` (used so the unzip node can operate on files/dirs directly rather than loading content).
 
 ### Configuration system
 
-Kedro `OmegaConfigLoader` with two envs (`conf/base/` defaults, `conf/local/` overrides). `conf/local/` is **git-ignored** and is what the GUI and the driver notebook write — never commit run-specific config to `base/`.
+Kedro `OmegaConfigLoader`. **Each run configuration is a committed env** `conf/<config>/globals.yml`, selected with `kedro run --env <config>` (`conf/base/` holds defaults + the shared catalog/parameters; `default_run_env` is `local`). There is no driver and no `conf/local` writing — pipeline, storage, and questionnaire all come from Kedro config.
 
-- **`globals.yml`** — `data_root` (default `"data"`, relative to `rissk_kedro/`, or an absolute path), and the active `questionnaire` (`name`, `VERSION` list, optional `filter_var`). Catalog paths interpolate these via `${globals:...}`.
-- **`parameters.yml`** — the `features:` map (each feature has a `use:` flag and optional `parameters.contamination`), and `zip_password`. `contamination: auto` lets the model estimate the outlier threshold; a float (0.01–0.50) fixes it.
+- **`globals.yml`** (per env) — three storage roots whose *values* pick the mode (`input_root` = zip source, local or `s3://<bucket>`; `work_root` = always-local staging; `output_root` = stages 20→40, local or `s3://`), the `survey` folder, and the single active `questionnaire` (`name`, `VERSION`, `filter_var`). Combinations give local / s3in / s3out / s3.
+- **`parameters.yml`** (base) — the `features:` map (each feature `use:` flag + optional `parameters.contamination`; `auto` or a float 0.01–0.50), `zip_password`, and `input_root`/`survey`/`work_root` exposed to the staging node.
 
-**One questionnaire per run.** The active questionnaire is selected by config, not by code. To process a different questionnaire, change `questionnaire.name` in `globals.yml` (or use the GUI) and re-run — all catalog paths resolve to that questionnaire's folder. `VERSION: []` means "all versions found in the folder".
+**One questionnaire per env, one questionnaire per survey folder.** Outputs are keyed by `<survey>` (no questionnaire sub-level), so a survey folder holds a single questionnaire's results; `questionnaire.name` only selects which `<name>_*.zip` to ingest from the survey-level `10_RAW`. To process several questionnaires, use several envs pointing at **separate survey folders**. `VERSION: []` means "all versions found". See `conf/grdslchbs_test/globals.yml` for an example local config.
 
 ### Feature and score dispatch
 
-Feature creation dispatches through explicit dicts, **not** dynamic `getattr`: `ITEM_FEATURE_MAP` and `UNIT_FEATURE_MAP` in `rissk/feature_processing_kedro.py` map a feature key → a `feat_*` function. A key with no map entry is silently skipped — several features in `parameters.yml` are computed-but-not-scored or feature-only (see `Kedro_vs_Legacy_Changelog.md` §7). Item scores initialise to `np.nan` ("not evaluated"), resolved to `0` only at unit-level aggregation.
+Feature creation dispatches through explicit dicts, **not** dynamic `getattr`: `ITEM_FEATURE_MAP` and `UNIT_FEATURE_MAP` in `src/rissk/core/feature_processing.py` map a feature key → a `feat_*` function. A key with no map entry is silently skipped — several features in `parameters.yml` are computed-but-not-scored or feature-only (see `Kedro_vs_Legacy_Changelog.md` §7). Item scores initialise to `np.nan` ("not evaluated"), resolved to `0` only at unit-level aggregation.
 
 Scoring (per `README.md` "Process description"): item/unit features → Type 1/2/3 scores → aggregated via **PCA** (responsible-level) + **Isolation Forest** (unit-level), combined by normalised product, **winsorized**, and rescaled to 0–100.
 
 ### GUI
 
-`rissk_kedro/app/main.py` is a NiceGUI app. It reads `conf/base` + `conf/local`, writes user choices to **`conf/local/globals.yml` and `conf/local/parameters.yml`**, and runs the pipeline by shelling out to `python -m kedro run` (`asyncio.create_subprocess_exec`), streaming logs to the browser. `conf/local/` is written by the GUI and by the headless driver `rissk_kedro/src/rissk_kedro/driver.py`. The driver is the scheduled-run path: `rissk_readme.ipynb` (repo root) is a thin shell that sets one `CONFIG_FILE` parameter and calls `rissk_kedro.driver.run(CONFIG_FILE)`. `run` reads a per-survey run-config YAML (`notebooks/configs/*.yaml` — survey, questionnaires, which pipelines, S3/sync flags), and for each questionnaire writes `conf/local` (same keys/structure as the GUI) and executes the selected pipelines **in-process via `KedroSession`** (no CLI). Unlike the GUI, which shells out to `python -m kedro run`, the notebook never invokes the CLI.
+The scheduled-run path is **driverless**: `rissk_readme.ipynb` (repo root) is a thin shim that runs `python -m kedro run --env <ENV>` per configuration (an `ENV` list runs several). Storage is native — `output_root` may be `s3://…` so Kedro writes via `s3fs` (no `aws sync`); the local-only unzip means `stage_input_zips_node` (first node of `data_ingestion`) fetches the env's questionnaire zips (`<input_root>/<survey>/latest/10_RAW/<name>_*.zip`, local or s3) into the local `work_root` via `fsspec`, then `extract_zip_files_node` → `filter_extracted_survey_paths_node` run after it (ordered by flag outputs `input_staged`/`extracted_flag`).
 
-Interactive result-exploration notebooks live in `notebooks/viz/` (three [marimo](https://marimo.io) apps: `feature_scores.py`, `unit_scores.py`, `interview_scores.py`), backed by the read-only loaders in `rissk_kedro/src/rissk_kedro/viz.py`. They read the pipeline's output files only and import nothing from `rissk/` — the right home for *new* viz/helper code (treat `rissk/` as legacy-origin: read its outputs, don't extend it).
+`app/main.py` is a NiceGUI app that writes `conf/local` and shells out to `python -m kedro run`. **It still writes the old `data_root` globals schema and has NOT been migrated to the env model (`input_root`/`work_root`/`output_root`/`survey`) — it needs a rework before it will run.**
+
+Interactive result-exploration notebooks live in `notebooks/viz/` (three [marimo](https://marimo.io) apps: `feature_scores.py`, `unit_scores.py`, `interview_scores.py`), backed by the read-only loaders in `src/rissk/viz.py`. They read the pipeline's output files only and import nothing from the ML modules — `viz.py` is the right home for *new* viz/helper code (read pipeline outputs; keep it decoupled from the feature/scoring logic).
 
 ## Project conventions
 
-- **No Kedro hooks.** `HOOKS = ()` in `settings.py` and it stays that way — hooks caused confusion and data-lineage issues. Keep all logic in nodes (and in the `rissk/` functions they call).
+- **No Kedro hooks.** `HOOKS = ()` in `settings.py` and it stays that way — hooks caused confusion and data-lineage issues. Keep all logic in nodes (and in the `rissk` ML modules they call).
 - **Static pipelines only.** Do not generate pipelines or nodes dynamically. The pipeline is a fixed DAG; multi-questionnaire handling is done by re-running with different config, not by programmatic node generation.
 - **Graceful empty/missing data.** Ingestion and scoring nodes detect missing exports, header-only files, and corrupt files, logging `WARNING`/`ERROR` and returning empty DataFrames rather than crashing (see changelog §3.1). Preserve this when editing nodes.
 - **Behavioural changes go in the changelog.** Any intentional divergence in feature/score values should be recorded in `Kedro_vs_Legacy_Changelog.md` with rationale.

@@ -38,8 +38,5 @@ dependencies:
       # Notebook Jobs (register the env as a Jupyter kernel)
       - ipykernel>=6.29
 
-      # Both workspace packages, editable. pip ignores [tool.uv.workspace], so each
-      # must be listed explicitly — otherwise `import rissk_kedro` (driver, viz,
-      # pipelines) fails in the conda env.
+      # The single editable package (Kedro project + ML modules), at the repo root.
       - -e .
-      - -e ./rissk_kedro

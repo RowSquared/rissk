@@ -3,6 +3,12 @@
 .DS_Store
 data/*
 outputs/*
+
+# Kedro project (conf/ now lives at the repo root)
+conf/local/**
+!conf/local/.gitkeep
+conf/**/*credentials*
+.viz
 ### PyCharm template
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio, WebStorm and Rider
 # Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
@@ -260,17 +266,14 @@ cython_debug/
 #.idea/
 
 .gitignore
-rissk_kedro/stats.json
 .vscode/mcp.json
 configuration/main.yaml
 rissk/prompt.md
 FEATURES_SCORES.md
-rissk_kedro/conf/base/catalog.yml
 FEATURES_SCORES_updated.md
 prompt.md
 markdown_docs/
 requirements_legacy.txt
-rissk_kedro/notebooks/
 rissk/utils/testing_utils.py
 
 # marimo layout/cache artifacts

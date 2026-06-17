@@ -15,7 +15,7 @@ RISSK utilizes machine learning algorithms to generate a **Unit Risk Score (URS)
 
 # Getting started
 
-These instructions will guide you on how to install and run RISSK on your local machine. For full installation details see [SETUP.md](rissk_kedro/SETUP.md).
+RISSK runs as a **Kedro pipeline driven by a small config file** — you describe your survey in `conf/<config>/globals.yml` and run `kedro run --env <config>`. A point-and-click **GUI is optional** (see [Optional: GUI](#optional-gui)). For full installation details see [SETUP.md](SETUP.md).
 
 ## Prerequisites
 
@@ -29,94 +29,134 @@ Verify your Python version:
 python --version
 ```
 
-## Setup
+## 1. Install
 
-### Option A — uv (recommended)
+[uv](https://docs.astral.sh/uv/) is recommended (a fast, self-contained package manager — no manual virtualenvs):
 
-[uv](https://docs.astral.sh/uv/) is a fast, self-contained Python package manager. You do **not** need to manage virtual environments manually.
-
-1. **Install uv** — [instructions](https://docs.astral.sh/uv/getting-started/installation/)
-2. **Get the code**:
 ```bash
 git clone https://github.com/rowsquared/rissk.git
 cd rissk
-```
-3. **Install dependencies**:
-```bash
-uv sync --extra gui --all-packages
-```
-4. **Launch the GUI**:
-```bash
-bash rissk_kedro/run_gui.sh        # macOS / Linux
-rissk_kedro\run_gui.bat            # Windows
+uv sync                 # core install  (add --extra viz for the score notebooks, --extra gui for the GUI)
 ```
 
-### Option B — conda
+<details><summary>conda alternative</summary>
 
 ```bash
 git clone https://github.com/rowsquared/rissk.git
 cd rissk
 conda env create -f environment.yml
 conda activate rissk_kedro
-bash rissk_kedro/run_gui.sh        # macOS / Linux
-rissk_kedro\run_gui.bat            # Windows
+```
+</details>
+
+## 2. Export your data from Survey Solutions
+
+Export **both** files for each questionnaire version:
+
+- **Main Survey Data** — choose *Tab separated* or *Stata 14*, tick *Include meta information about questionnaire*. <details><summary>Screenshot of the export options for Main Survey Data.</summary>![Export options Main Survey Data](images/export_main.png)</details>
+- **Paradata** — under *Data Type* select *Paradata*. <details><summary>Screenshot of the export options for Paradata.</summary>![Export options Paradata](images/export_para.png)</details>
+
+**Do not rename, modify, or unzip the files** — RISSK reads Survey Solutions' original filename (`<questionnaire>_<version>_<format>_<status>.zip`) to find each export.
+
+Put all the ZIPs for one **survey** together in a single `10_RAW` folder:
+
+```
+<input_root>/<survey>/latest/10_RAW/
+    slchbs_grenada_2627_10_STATA_All.zip       # Main Survey Data (Stata or Tab-separated)
+    slchbs_grenada_2627_10_Paradata_All.zip    # Paradata
+    slchbs_grenada_2627_11_STATA_All.zip       # another version of the same questionnaire
+    ...
 ```
 
-Your browser will open automatically at **http://localhost:8080**.
+(All questionnaires of a survey share this one folder; they are told apart by the filename prefix.)
 
-## Setting up export folder
+## 3. Configure a run
 
-In the GUI **Setup** tab, choose a data folder and note the subfolder shown (e.g. `pmpmd_household/latest/10_RAW/`). Place your unmodified Survey Solutions ZIP files there.
+A **run is a committed Kedro config environment** — a single file `conf/<config>/globals.yml`. Copy one of the bundled examples and edit it for your survey:
 
-**Export data from Survey Solutions:**
-- **Main Survey Data** — choose *Tab separated* or *Stata 14*, tick *Include meta information about questionnaire*. <details><summary>Click to see a screenshot of the selected export options for Main Survey Data.</summary>![Export options Main Survey Data](images/export_main.png)</details>
-- **Paradata** — under *Data Type* select *Paradata*. <details><summary>Click to see a screenshot of the selected export options for Paradata.</summary>![Export options Paradata](images/export_para.png)</details>
-
-Export both files from the **same questionnaire version** consecutively. For multiple compatible versions, export each separately and place all ZIPs in the same folder. **Do not rename, modify, or unzip the files.**
-
-## Running RISSK
-
-1. In the GUI **Setup** tab, enter your questionnaire name and version numbers, then click **Save configuration**.
-2. Switch to the **Run** tab and click **Run RISSK**.
-3. Monitor progress in the live log. Results are written to:
-```
-<data_root>/<questionnaire_name>/latest/40_SCORED/unit_rissk_scores.csv
-```
-
-**Command-line alternative** (from the `rissk_kedro/` directory):
 ```bash
-kedro run
+cp -r conf/grdslchbs_test conf/my_survey      # local example  (or copy conf/s3in / conf/s3out / conf/s3)
 ```
 
-## Scheduled / headless runs (JupyterHub)
+```yaml
+# conf/my_survey/globals.yml
+input_root:  "data"            # where the export ZIPs live  (local path, or s3://<bucket>)
+work_root:   "data"            # ALWAYS-local staging — zips are fetched + unzipped here
+output_root: "data"            # where results are written   (local path, or s3://<bucket>)
 
-For unattended execution (e.g. via the JupyterHub *Notebook Jobs* plugin), use the driver notebook [rissk_readme.ipynb](rissk_readme.ipynb). It replaces the GUI entirely, and all logic lives in `rissk_kedro.driver.run` — the notebook itself is just `run(CONFIG_FILE)`. A per-survey run-config YAML in [notebooks/configs/](notebooks/configs/) (the equivalent of the legacy `env.yaml`) sets the S3 survey folder, the questionnaires/versions, and which of the three pipelines (`data_ingestion`, `feature_creation`, `rissk_scoring`) to execute. The driver syncs the export zips down from S3, runs the selected pipelines **in-process** (via `KedroSession`, no command line) once per questionnaire, syncs the generated stages back to `s3://<bucket>/<survey>/latest/<questionnaire>/`, and optionally deletes the local data afterwards.
+survey: my_survey              # folder under the roots →  <root>/my_survey/latest/...
+questionnaire:
+  name: slchbs_grenada_2627    # questionnaire template name = the <name>_*.zip filename prefix
+  VERSION: [10, 11, 12, 13]    # versions to process;  [] = all versions found in 10_RAW
+  filter_var: null             # optional consent filter, e.g. {consent_q: "1"} (score only consenting interviews)
+```
 
-The notebook never needs editing between surveys: schedule the same file once per survey, overriding only the `CONFIG_FILE` job parameter in the Notebook Jobs *Parameters* form (e.g. `CONFIG_FILE = "notebooks/configs/fbf.yaml"`). See [notebooks/configs/example.yaml](notebooks/configs/example.yaml) for the template.
+**The storage mode is just the root *values*** (a local path vs `s3://<bucket>`). Four ready-made envs are committed:
 
-### Visualising the scores
+| Env | `input_root` | `work_root` | `output_root` | Use when |
+|---|---|---|---|---|
+| `grdslchbs_test` | local | local | local | everything on disk |
+| `s3in`  | `s3://…` | local | local | ZIPs live in S3, write results locally |
+| `s3out` | local | local | `s3://…` | ZIPs are local, publish results to S3 |
+| `s3`    | `s3://…` | local | `s3://…` | read **and** write S3 |
+
+- `work_root` is **always local** — the unzip step can't run on S3.
+- Any `s3://` root needs `s3fs` (installed by default) **and** AWS credentials in the environment (standard chain: env vars or `~/.aws`).
+
+**One survey per config.** A survey folder holds a single questionnaire's results, so to process several questionnaires (or surveys) you make several configs — `conf/survey_a/`, `conf/survey_b/`, … — each with its own `survey` value and ZIP folder, and run each with its own `--env`.
+
+## 4. Run RISSK
+
+From the repo root:
+
+```bash
+kedro run --env my_survey                              # full pipeline
+kedro run --env my_survey --pipeline data_ingestion    # …or a single stage:
+kedro run --env my_survey --pipeline feature_creation  #   data_ingestion → feature_creation → rissk_scoring
+kedro run --env my_survey --pipeline rissk_scoring
+```
+
+Results land under `output_root`:
+
+```
+<output_root>/<survey>/latest/40_SCORED/
+    unit_rissk_scores.csv     ← the Unit Risk Score (0–100) per interview  (the main output)
+    item_scores.parquet       responsible_scores.csv
+```
+
+**Scheduling (JupyterHub Notebook Jobs).** [rissk_readme.ipynb](rissk_readme.ipynb) runs the same pipeline **in-process**: set `ENV` (a config name, or a list of them) and `PIPELINE`, and it runs each via `KedroSession`. One job per survey, same notebook, no code changes — there is no driver; pipeline, storage and questionnaire all come from Kedro config.
+
+## Visualising the scores
 
 Three interactive [marimo](https://marimo.io) notebooks in [notebooks/viz/](notebooks/viz/) explore a scored run — `feature_scores.py` (per-feature distributions), `unit_scores.py` (the 0–100 unit risk score across interviews) and `interview_scores.py` (single-interview drill-down). Install the extra and launch one in the browser:
 
 ```bash
-uv sync --all-packages --extra viz
+uv sync --extra viz
 uv run marimo edit notebooks/viz/unit_scores.py
 ```
 
 Each notebook starts with a questionnaire dropdown that scans the data root, so it picks up whichever runs you have locally. See [notebooks/viz/README.md](notebooks/viz/README.md) for details.
 
+## Optional: GUI
+
+A local [NiceGUI](https://nicegui.io) app offers a point-and-click alternative for a single local run:
+
+```bash
+uv sync --extra gui
+bash run_gui.sh        # macOS / Linux   (run_gui.bat on Windows)  →  http://localhost:8080
+```
+
+> **Note:** the GUI predates the config-env model (it writes the older `data_root` schema) and has **not** yet been migrated, so it may not run against the current pipeline. The `kedro run --env <config>` flow above is the supported path; the GUI will be reworked.
+
 # Advanced use
 
-## Exporting feature scores
-By default, RISSK exports only `unit_rissk_scores.csv` containing the `unit_risk_score` for each interview. To also export individual feature scores, enable **Feature score export** in the GUI **Advanced** tab before running.
+## Feature scores
 
-The additional output file `item_scores.parquet` contains the detailed feature scores for each interview. For guidance on how to interpret each feature score, refer to [FEATURES_SCORES.md](FEATURES_SCORES.md).
+Every run writes both the per-interview `unit_rissk_scores.csv` (the `unit_risk_score`) **and** `item_scores.parquet` — the detailed per-feature scores for each interview — to `40_SCORED/`. For guidance on how to interpret each feature score, refer to [FEATURES_SCORES.md](FEATURES_SCORES.md).
 
 ## Excluding features
 
-By default, RISSK includes all available features when calculating the Unit Risk Score (URS). To exclude a specific feature, open the GUI **Advanced** tab and toggle the feature off before running.
-
-Alternatively, edit `rissk_kedro/conf/local/parameters.yml` directly:
+By default, RISSK includes all available features when calculating the Unit Risk Score (URS). To exclude a feature, set its `use: false` in `conf/base/parameters.yml` (the shared `features:` map, applied to every env):
 
 ```yaml
 features:
@@ -124,9 +164,11 @@ features:
     use: false
 ```
 
+(The GUI **Advanced** tab offers the same toggles for a local run.)
+
 ## Adjusting contamination level
 
-Default contamination values have been set based on our testing data. To override them, edit `rissk_kedro/conf/local/parameters.yml`:
+Default contamination values have been set based on our testing data. To override them, set a per-feature `contamination` in `conf/base/parameters.yml`:
 
 ```yaml
 features:
@@ -136,13 +178,13 @@ features:
       contamination: 0.12
 ```
 
-Or adjust per-feature thresholds in the GUI **Advanced** tab.
+(Or adjust the thresholds in the GUI **Advanced** tab for a local run.)
 
 ## Automatically determining contamination level
 
 The `medfilt` thresholding method can automatically determine contamination levels for each algorithm. This increases memory use and runtime but improved RISSK's effectiveness in our [experiment](#confirmation-of-results).
 
-Enable this in the GUI **Advanced** tab (**Automatic contamination**), or set it in `rissk_kedro/conf/local/parameters.yml`:
+Set it in `conf/base/parameters.yml` (or via the GUI **Advanced** tab, *Automatic contamination*):
 
 ```yaml
 processing:

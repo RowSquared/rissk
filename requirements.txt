@@ -33,7 +33,6 @@ boto3>=1.35.0
 s3fs>=2024.3.1
 openpyxl>=3.1.2
 
-# --- Package itself ---
+# --- Package itself (single project; deps above mirror pyproject.toml) ---
 -e .
--e rissk_kedro/
 

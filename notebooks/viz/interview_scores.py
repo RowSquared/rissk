@@ -10,7 +10,7 @@ def _():
     import altair as alt
     import pandas as pd
 
-    from rissk_kedro import viz
+    from rissk import viz
 
     return alt, mo, pd, viz
 

@@ -10,10 +10,22 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
-[manifest]
-members = [
-    "rissk",
-    "rissk-pipeline",
+[[package]]
+name = "aiobotocore"
+version = "3.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "aioitertools" },
+    { name = "botocore" },
+    { name = "jmespath" },
+    { name = "multidict" },
+    { name = "python-dateutil" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e7/75/42cce839c2ec263ff74b10b650fe36b066fbb124cbee6f247eac0983e1ab/aiobotocore-3.7.0.tar.gz", hash = "sha256:c64d871ed5491a6571948dd48eabd185b46c6c23b64e3afd0c059fc7593ada30", size = 127054, upload-time = "2026-05-09T10:02:52.332Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/90/5f/85535dfb3cfd6442d66d1df1694062c5d6df02f895329e7e120b2a3d2b8b/aiobotocore-3.7.0-py3-none-any.whl", hash = "sha256:680bde7c64679a821a9312641b759d9497f790ba8b2e88c6959e6273ee765b8e", size = 89539, upload-time = "2026-05-09T10:02:50.389Z" },
 ]
 
 [[package]]
@@ -100,6 +112,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/78/b7/15fb7a9d52e112a25b621c67b69c167805cb1f2ab8f1708a5c490d1b52fe/aiohttp-3.13.5-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:3b13560160d07e047a93f23aaa30718606493036253d5430887514715b67c9d9", size = 1772072, upload-time = "2026-03-31T22:00:07.494Z" },
     { url = "https://files.pythonhosted.org/packages/7e/df/57ba7f0c4a553fc2bd8b6321df236870ec6fd64a2a473a8a13d4f733214e/aiohttp-3.13.5-cp314-cp314t-win32.whl", hash = "sha256:9a0f4474b6ea6818b41f82172d799e4b3d29e22c2c520ce4357856fced9af2f8", size = 471819, upload-time = "2026-03-31T22:00:10.277Z" },
     { url = "https://files.pythonhosted.org/packages/62/29/2f8418269e46454a26171bfdd6a055d74febf32234e474930f2f60a17145/aiohttp-3.13.5-cp314-cp314t-win_amd64.whl", hash = "sha256:18a2f6c1182c51baa1d28d68fea51513cb2a76612f038853c0ad3c145423d3d9", size = 505441, upload-time = "2026-03-31T22:00:12.791Z" },
+]
+
+[[package]]
+name = "aioitertools"
+version = "0.13.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fd/3c/53c4a17a05fb9ea2313ee1777ff53f5e001aefd5cc85aa2f4c2d982e1e38/aioitertools-0.13.0.tar.gz", hash = "sha256:620bd241acc0bbb9ec819f1ab215866871b4bbd1f73836a55f799200ee86950c", size = 19322, upload-time = "2025-11-06T22:17:07.609Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/a1/510b0a7fadc6f43a6ce50152e69dbd86415240835868bb0bd9b5b88b1e06/aioitertools-0.13.0-py3-none-any.whl", hash = "sha256:0be0292b856f08dfac90e31f4739432f4cb6d7520ab9eb73e143f4f2fa5259be", size = 24182, upload-time = "2025-11-06T22:17:06.502Z" },
 ]
 
 [[package]]
@@ -290,6 +311,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/cc/43/537635bf12f258db17a1a80e56c39bfefce218e1baab5459c05a4ff9739f/blosc2-4.1.2-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:df3e78642af359f3bdc46f4446f0517f2deca2b3d4c9c92caf49d4abf6ce2a9c", size = 5061103, upload-time = "2026-03-03T11:05:10.475Z" },
     { url = "https://files.pythonhosted.org/packages/36/e3/ad7dff6eaf0e36a0959865ebd5a16026929f5a919cf0158858c307d6971d/blosc2-4.1.2-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:482e2f1447d47241af1952a563573cf12f67fcb86a2d87227dc28e427b29f865", size = 5195395, upload-time = "2026-03-03T11:05:11.768Z" },
     { url = "https://files.pythonhosted.org/packages/a6/9e/b028eed46dfa45def2ca9c3e66aa3b8a3188a8a4998d017c699caf2bf0d9/blosc2-4.1.2-cp314-cp314t-win_amd64.whl", hash = "sha256:9ee2217b03ecca4e823ff22701f423b7630f2b0a44773e0486ddbaa953ed39e9", size = 3243706, upload-time = "2026-03-03T11:05:13.294Z" },
+]
+
+[[package]]
+name = "botocore"
+version = "1.43.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jmespath" },
+    { name = "python-dateutil" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/28/79/2f4be1896db3db7ccf44504253a175d56b6bd6b669619edc5147d1aa21ea/botocore-1.43.0.tar.gz", hash = "sha256:e933b31a2d644253e1d029d7d39e99ba41b87e29300534f189744cc438cdf928", size = 15286817, upload-time = "2026-04-29T22:07:31.723Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/4b/afc1fef8a43bafb139f57f73bbd70df82807af5934321e8112ae50668827/botocore-1.43.0-py3-none-any.whl", hash = "sha256:cc5b15eaec3c6eac05d8012cb5ef17ebe891beb88a16ca13c374bfaece1241e6", size = 14970102, upload-time = "2026-04-29T22:07:27Z" },
 ]
 
 [[package]]
@@ -848,11 +883,11 @@ wheels = [
 
 [[package]]
 name = "fsspec"
-version = "2026.3.0"
+version = "2026.6.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e1/cf/b50ddf667c15276a9ab15a70ef5f257564de271957933ffea49d2cdbcdfb/fsspec-2026.3.0.tar.gz", hash = "sha256:1ee6a0e28677557f8c2f994e3eea77db6392b4de9cd1f5d7a9e87a0ae9d01b41", size = 313547, upload-time = "2026-03-27T19:11:14.892Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/a1/ae4e3e5003468d6391d2c77b6fa1cd73bd5d13511d81c642d7b28ac90ed4/fsspec-2026.6.0.tar.gz", hash = "sha256:f5bac145310fe30e16e1471bd6840b2d990d609e872251d7e674241822abf01a", size = 313646, upload-time = "2026-06-16T01:57:28.105Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/1f/5f4a3cd9e4440e9d9bc78ad0a91a1c8d46b4d429d5239ebe6793c9fe5c41/fsspec-2026.3.0-py3-none-any.whl", hash = "sha256:d2ceafaad1b3457968ed14efa28798162f1638dbb5d2a6868a2db002a5ee39a4", size = 202595, upload-time = "2026-03-27T19:11:13.595Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/22/4222d7ddf3da30f363edaa98e329c2bce6c65497c9cb2810931c8b2c0fbc/fsspec-2026.6.0-py3-none-any.whl", hash = "sha256:02e0b71817df9b2169dc30a16832045764def1191b43dcff5bb85bdee212d2a1", size = 203949, upload-time = "2026-06-16T01:57:26.358Z" },
 ]
 
 [[package]]
@@ -1193,6 +1228,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67", size = 134899, upload-time = "2025-03-05T20:05:00.369Z" },
+]
+
+[[package]]
+name = "jmespath"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/59/322338183ecda247fb5d1763a6cbe46eff7222eaeebafd9fa65d4bf5cb11/jmespath-1.1.0.tar.gz", hash = "sha256:472c87d80f36026ae83c6ddd0f1d05d4e510134ed462851fd5f754c8c3cbb88d", size = 27377, upload-time = "2026-01-22T16:35:26.279Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/2f/967ba146e6d58cf6a652da73885f52fc68001525b4197effc174321d70b4/jmespath-1.1.0-py3-none-any.whl", hash = "sha256:a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64", size = 20419, upload-time = "2026-01-22T16:35:24.919Z" },
 ]
 
 [[package]]
@@ -2873,10 +2917,14 @@ name = "rissk"
 version = "0.1.2"
 source = { editable = "." }
 dependencies = [
+    { name = "kedro" },
+    { name = "kedro-datasets", extra = ["pandas"] },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyod" },
+    { name = "pythresh" },
     { name = "pyyaml" },
+    { name = "s3fs" },
     { name = "scikit-learn" },
     { name = "scipy" },
 ]
@@ -2884,6 +2932,10 @@ dependencies = [
 [package.optional-dependencies]
 gui = [
     { name = "nicegui" },
+]
+test = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
 ]
 viz = [
     { name = "altair" },
@@ -2893,44 +2945,10 @@ viz = [
 [package.metadata]
 requires-dist = [
     { name = "altair", marker = "extra == 'viz'", specifier = ">=5.0" },
-    { name = "marimo", marker = "extra == 'viz'", specifier = ">=0.9" },
-    { name = "nicegui", marker = "extra == 'gui'", specifier = ">=1.4" },
-    { name = "numpy", specifier = ">=2.1.0" },
-    { name = "pandas", specifier = ">=2.2.3" },
-    { name = "pyod", specifier = ">=1.1.5" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "scikit-learn", specifier = ">=1.5" },
-    { name = "scipy", specifier = ">=1.10" },
-]
-provides-extras = ["gui", "viz"]
-
-[[package]]
-name = "rissk-pipeline"
-version = "0.1.2"
-source = { editable = "rissk_kedro" }
-dependencies = [
-    { name = "kedro" },
-    { name = "kedro-datasets", extra = ["pandas"] },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pyod" },
-    { name = "pythresh" },
-    { name = "pyyaml" },
-    { name = "rissk" },
-    { name = "scikit-learn" },
-    { name = "scipy" },
-]
-
-[package.optional-dependencies]
-test = [
-    { name = "pytest" },
-    { name = "pytest-cov" },
-]
-
-[package.metadata]
-requires-dist = [
     { name = "kedro", specifier = "==1.2.0" },
     { name = "kedro-datasets", extras = ["pandas"], specifier = ">=9.1.0" },
+    { name = "marimo", marker = "extra == 'viz'", specifier = ">=0.9" },
+    { name = "nicegui", marker = "extra == 'gui'", specifier = ">=1.4" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "pyod", specifier = ">=1.1.5" },
@@ -2938,11 +2956,11 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'test'" },
     { name = "pythresh", specifier = ">=0.3.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rissk", editable = "." },
+    { name = "s3fs", specifier = ">=2024.3.1" },
     { name = "scikit-learn", specifier = ">=1.5" },
     { name = "scipy", specifier = ">=1.10" },
 ]
-provides-extras = ["test"]
+provides-extras = ["gui", "viz", "test"]
 
 [[package]]
 name = "rpds-py"
@@ -3037,6 +3055,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/77/65/38ab2f90df44c2febfb63cc10ced40763d9b4bc94d173e734528663fe7f5/rpds_py-2026.5.1-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:b1be5c35683684d5331b93600c210e8367c254683d8a6df6bd21bd2da3a334fb", size = 581839, upload-time = "2026-05-28T12:01:48.109Z" },
     { url = "https://files.pythonhosted.org/packages/15/2d/ce1f605fe036aadd460e5822e578c6c7ec3a860936cca37d6e0f299daa77/rpds_py-2026.5.1-cp315-cp315t-win32.whl", hash = "sha256:75808f6c38ce7749bb68cc2770161aae5045e6c6f6781a9782e74b93304399df", size = 207866, upload-time = "2026-05-28T12:01:49.648Z" },
     { url = "https://files.pythonhosted.org/packages/79/cb/966040123eb102371559746908ef2c9471f4d43e17ec9a645a2258dab64b/rpds_py-2026.5.1-cp315-cp315t-win_amd64.whl", hash = "sha256:90bd6630002a1c7f09e7843dd79f0d24f3d2897cc25a753480917865d14f15b3", size = 225441, upload-time = "2026-05-28T12:01:51.408Z" },
+]
+
+[[package]]
+name = "s3fs"
+version = "2026.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiobotocore" },
+    { name = "aiohttp" },
+    { name = "fsspec" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/99/00/6677343dc919d6c072bb04d80210afdd22c16838a8d16b3315c122dc728f/s3fs-2026.6.0.tar.gz", hash = "sha256:b28de7082d0a4f72392884bdc497e34a4a1582f675d214c7da0acf6e950a0083", size = 87358, upload-time = "2026-06-16T02:05:48.719Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a5/0b/f68a968b49876eae0f2a515387093cebb2eb9451380a96741cc20efac0d0/s3fs-2026.6.0-py3-none-any.whl", hash = "sha256:60576e31bb31193c1f643f32b4c6439548720ea6918ac702e21cd757c80b5db8", size = 32573, upload-time = "2026-06-16T02:05:47.608Z" },
 ]
 
 [[package]]
