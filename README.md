@@ -119,7 +119,7 @@ kedro run --env my_survey --pipeline rissk_scoring
 Results land under `output_root`:
 
 ```
-<output_root>/<survey>/latest/40_SCORED/
+<output_root>/<survey>/latest/41_SCORES/
     unit_rissk_scores.csv     ← the Unit Risk Score (0–100) per interview  (the main output)
     item_scores.parquet       responsible_scores.csv
 ```
@@ -152,7 +152,7 @@ bash run_gui.sh        # macOS / Linux   (run_gui.bat on Windows)  →  http://l
 
 ## Feature scores
 
-Every run writes both the per-interview `unit_rissk_scores.csv` (the `unit_risk_score`) **and** `item_scores.parquet` — the detailed per-feature scores for each interview — to `40_SCORED/`. For guidance on how to interpret each feature score, refer to [FEATURES_SCORES.md](FEATURES_SCORES.md).
+Every run writes both the per-interview `unit_rissk_scores.csv` (the `unit_risk_score`) **and** `item_scores.parquet` — the detailed per-feature scores for each interview — to `41_SCORES/`. For guidance on how to interpret each feature score, refer to [FEATURES_SCORES.md](FEATURES_SCORES.md).
 
 ## Excluding features
 

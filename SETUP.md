@@ -92,7 +92,7 @@ kedro run --env my_survey --pipeline feature_creation
 kedro run --env my_survey --pipeline rissk_scoring
 ```
 
-Results land in `<output_root>/<survey>/latest/40_SCORED/unit_rissk_scores.csv`. For the full
+Results land in `<output_root>/<survey>/latest/41_SCORES/unit_rissk_scores.csv`. For the full
 walkthrough — every config field, the **local / s3in / s3out / s3** storage modes, and handling
 several surveys — see **[README → Configure a run](README.md#3-configure-a-run)**.
 
@@ -155,7 +155,7 @@ To switch to a different questionnaire, update the name in the Setup tab and sav
 
 Results are written to:
 ```
-<data_root>/<questionnaire_name>/latest/40_SCORED/unit_rissk_scores.csv
+<data_root>/<questionnaire_name>/latest/41_SCORES/unit_rissk_scores.csv
 ```
 
 ### Advanced settings

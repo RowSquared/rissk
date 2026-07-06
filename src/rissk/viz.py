@@ -1,7 +1,7 @@
 """Data loaders for the interactive visualisation notebooks (``notebooks/viz/``).
 
 Reads **only** the pipeline's output files for a chosen questionnaire under
-``<data_root>/<questionnaire>/latest/`` — the scored CSV/parquet in ``40_SCORED``
+``<data_root>/<questionnaire>/latest/`` — the scored CSV/parquet in ``41_SCORES``
 and the feature parquet in ``30_PROCESSED``. It imports nothing from the legacy
 ``rissk`` package, so the notebooks depend on data on disk, not pipeline code.
 
@@ -29,7 +29,7 @@ def _data_root(data_root: Optional[PathLike] = None) -> Path:
 def list_questionnaires(data_root: Optional[PathLike] = None) -> list[str]:
     """Questionnaire folders that have a scored output, most-recent first.
 
-    A folder qualifies when ``<data_root>/<name>/latest/40_SCORED/unit_rissk_scores.csv``
+    A folder qualifies when ``<data_root>/<name>/latest/41_SCORES/unit_rissk_scores.csv``
     exists; folders are ordered by that file's modification time (newest first).
     """
     root = _data_root(data_root)
@@ -37,14 +37,14 @@ def list_questionnaires(data_root: Optional[PathLike] = None) -> list[str]:
         return []
     found: list[tuple[str, float]] = []
     for child in sorted(root.iterdir()):
-        scored = child / "latest" / "40_SCORED" / "unit_rissk_scores.csv"
+        scored = child / "latest" / "41_SCORES" / "unit_rissk_scores.csv"
         if scored.is_file():
             found.append((child.name, scored.stat().st_mtime))
     return [name for name, _ in sorted(found, key=lambda x: x[1], reverse=True)]
 
 
 def _scored_dir(questionnaire: str, data_root: Optional[PathLike] = None) -> Path:
-    return _data_root(data_root) / questionnaire / "latest" / "40_SCORED"
+    return _data_root(data_root) / questionnaire / "latest" / "41_SCORES"
 
 
 def _processed_dir(questionnaire: str, data_root: Optional[PathLike] = None) -> Path:

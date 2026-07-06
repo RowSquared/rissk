@@ -7,8 +7,8 @@ from rissk import viz
 
 
 def _make_scored(root, name, n=20):
-    """Create a minimal <root>/<name>/latest/40_SCORED/unit_rissk_scores.csv."""
-    scored = root / name / "latest" / "40_SCORED"
+    """Create a minimal <root>/<name>/latest/41_SCORES/unit_rissk_scores.csv."""
+    scored = root / name / "latest" / "41_SCORES"
     scored.mkdir(parents=True)
     df = pd.DataFrame(
         {
@@ -35,7 +35,7 @@ def test_list_questionnaires_newest_first(tmp_path):
     _make_scored(tmp_path, "older")
     _make_scored(tmp_path, "newer")
     # Force a newer mtime on "newer"
-    newer = tmp_path / "newer" / "latest" / "40_SCORED" / "unit_rissk_scores.csv"
+    newer = tmp_path / "newer" / "latest" / "41_SCORES" / "unit_rissk_scores.csv"
     os.utime(newer, (time.time() + 100, time.time() + 100))
     assert viz.list_questionnaires(tmp_path) == ["newer", "older"]
 
