@@ -355,7 +355,14 @@ def combine_microdata_node(partitions: Dict[str, Callable[[], pd.DataFrame]]) ->
     for key, load in sorted(partitions.items()):
         if not key.strip("/"):
             continue  # the survey-level union file itself — never fold it back in
-        frames.append(load())
+        # Per-partition guard: one corrupt/partial <qnr>/microdata.parquet must not sink
+        # the whole run (project convention — mirrors data_ingestion/nodes.py).
+        try:
+            df = load()
+        except Exception as e:
+            logger.error("combine_microdata: skipping unreadable partition %r: %s", key.strip("/"), e)
+            continue
+        frames.append(df)
         logger.info("combine_microdata: adding partition %r", key.strip("/"))
 
     if not frames:
