@@ -4,7 +4,9 @@
 
 **Goal:** Let one survey hold several questionnaire names — each scored independently into a per-`<qnr>` subfolder — plus a survey-level union of the per-questionnaire `microdata.parquet`; and rename the scores folder `41_SCORES` → `35_SCORES`.
 
-**Architecture:** The 3-stage pipeline is unchanged and still runs one questionnaire at a time. A driver (`src/rissk/run.py`, called by the notebook) iterates the questionnaires declared under `conf/<env>/questionnaires/*.yml`, running the full pipeline once per questionnaire and injecting the selection via Kedro **runtime params** (`questionnaire` + `qnr_subdir`). Catalog output paths gain a `${runtime_params:qnr_subdir,''}` segment whose **empty default keeps every existing env byte-for-byte identical**. A new, separate `combine` pipeline unions the per-`<qnr>` microdata into `30_PROCESSED/microdata.parquet`.
+**Architecture:** The 3-stage pipeline is unchanged and still runs one questionnaire at a time. A driver (`src/rissk/run.py`, called by the notebook) iterates the questionnaires declared under `conf/<env>/questionnaires/*.yml`, running the full pipeline once per questionnaire and injecting the selection via Kedro **runtime params** (`questionnaire` + `qnr_subdir`). Catalog output paths gain a `${runtime_params:qnr_subdir,''}` segment whose **empty default keeps every existing env byte-for-byte identical**. After the loop, the driver unions the per-`<qnr>` microdata into `30_PROCESSED/microdata.parquet` by loading/saving through the Kedro **catalog directly** (a `PartitionedDataset` in → a `ParquetDataset` out, so s3 works via fsspec) — **not** a separate pipeline. The union logic is a plain, unit-tested function; the catalog handles the I/O.
+
+> **DESIGN REVISION (Option B), 2026-07-14:** the original Tasks 3–4 built `combine` as a one-node Kedro pipeline (pipeline + node + registry entry). That was over-engineered for a cross-run convenience aggregation, so it was collapsed: the two catalog datasets stay (I/O belongs in the catalog, and this preserves s3), but the pipeline/node/registry are removed and the driver calls `catalog.load`/`catalog.save` around a pure `combine_microdata` function. Task 3 below is now "combine catalog entries only"; the function + wiring live in Task 4 (`run.py`).
 
 **Tech Stack:** Kedro 1.2.0, kedro-datasets 9.x (`pandas.ParquetDataset`, `pandas.CSVDataset`, `partitions.PartitionedDataset`), OmegaConfigLoader, pandas, pytest.
 
@@ -23,9 +25,8 @@
 
 - `conf/base/catalog.yml` — modify: rename `41_SCORES`→`35_SCORES` (×3); add `${runtime_params:qnr_subdir,''}` to the 13 per-`<qnr>` output entries; add `microdata_by_qnr` + `microdata_combined`.
 - `conf/base/parameters.yml` — modify: `questionnaire` gains the runtime→globals→null fallback.
-- `src/rissk/pipelines/combine/{__init__,nodes,pipeline}.py` — create: the `combine` pipeline (1 node).
-- `src/rissk/pipeline_registry.py` — modify: register `"combine"`.
-- `src/rissk/run.py` — create: `load_questionnaire_configs` + `run_survey` driver helpers.
+- `conf/base/catalog.yml` — add `microdata_by_qnr` (PartitionedDataset) + `microdata_combined` (ParquetDataset). **No** combine pipeline/node/registry (Option B).
+- `src/rissk/run.py` — create: `load_questionnaire_configs`, the pure `combine_microdata`, the catalog-backed `combine_survey_microdata`, and the `run_survey` driver.
 - `src/rissk/viz.py` — modify: `41_SCORES`→`35_SCORES` (×4 path strings).
 - `tests/test_viz.py` — modify: `41_SCORES`→`35_SCORES` (×3).
 - `tests/test_combine.py` — create: unit tests for the combine node.
@@ -724,11 +725,10 @@ h = pq.read_metadata(f"{base}/pmpmd_household/microdata.parquet").num_rows
 u = pq.read_metadata(f"{base}/microdata.parquet").num_rows
 print("community", c, "household", h, "union", u, "-> OK" if u == c + h else "-> MISMATCH")
 PY
-# Idempotency: re-run ONLY the combine pipeline (no runtime params -> qnr_subdir defaults
-# to ''), then re-check the union row count. This also proves `combine` works standalone
-# from the CLI. Do NOT use run_survey(pipeline='combine') here — that would run combine
-# once per questionnaire with qnr_subdir set, which is not the check we want.
-.venv/bin/python -m kedro run --env pmpmd --pipeline combine
+# Idempotency: re-run ONLY the combine step (Option B — a driver helper that loads/saves
+# through the catalog), then re-check the union row count. Proves combine works standalone
+# and does not fold its own output back in.
+.venv/bin/python -c "from rissk.run import combine_survey_microdata; combine_survey_microdata('pmpmd')"
 .venv/bin/python - <<'PY'
 import pyarrow.parquet as pq
 base = "data/pmpmd copy/latest/30_PROCESSED"
