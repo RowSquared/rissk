@@ -1,5 +1,5 @@
 import pandas as pd
-from rissk.pipelines.combine.nodes import combine_microdata_node
+from rissk.run import combine_microdata
 
 
 def _loader(df):
@@ -12,20 +12,20 @@ def test_unions_per_qnr_and_skips_top_level_union():
         "community/": _loader(pd.DataFrame({"qnr": ["community"], "value": [1]})),
         "household/": _loader(pd.DataFrame({"qnr": ["household"], "value": [2]})),
     }
-    out = combine_microdata_node(partitions)
+    out = combine_microdata(partitions)
     assert sorted(out["qnr"].unique()) == ["community", "household"]
     assert len(out) == 2
     assert "OLD" not in out["qnr"].values
 
 
 def test_empty_partitions_returns_empty_frame():
-    out = combine_microdata_node({})
+    out = combine_microdata({})
     assert isinstance(out, pd.DataFrame)
     assert out.empty
 
 
 def test_only_top_level_union_returns_empty_frame():
-    out = combine_microdata_node({"": _loader(pd.DataFrame({"qnr": ["OLD"]}))})
+    out = combine_microdata({"": _loader(pd.DataFrame({"qnr": ["OLD"]}))})
     assert out.empty
 
 
@@ -39,6 +39,6 @@ def test_skips_unreadable_partition_and_unions_the_rest():
         "corrupt/": _raising_loader,
         "household/": _loader(pd.DataFrame({"qnr": ["household"], "value": [2]})),
     }
-    out = combine_microdata_node(partitions)
+    out = combine_microdata(partitions)
     assert sorted(out["qnr"].unique()) == ["community", "household"]
     assert len(out) == 2

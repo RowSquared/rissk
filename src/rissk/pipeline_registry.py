@@ -8,18 +8,15 @@ def register_pipelines() -> dict[str, Pipeline]:
     from rissk.pipelines.data_ingestion import create_pipeline as ingestion_pipeline
     from rissk.pipelines.feature_creation import create_pipeline as feature_creation_pipeline
     from rissk.pipelines.rissk_scoring import create_pipeline as scoring_pipeline
-    from rissk.pipelines.combine import create_pipeline as combine_pipeline
 
     ingestion = ingestion_pipeline()
     feat_creation = feature_creation_pipeline()
     scoring = scoring_pipeline()
-    combine = combine_pipeline()
 
     return {
         "__default__": ingestion + feat_creation + scoring,
         "data_ingestion": ingestion,
         "feature_creation": feat_creation,
         "rissk_scoring": scoring,
-        "combine": combine,
     }
 

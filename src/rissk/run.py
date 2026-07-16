@@ -3,7 +3,10 @@
 One survey = one Kedro env (``conf/<env>/``). The questionnaires belonging to that
 survey are declared as one small YAML each under ``conf/<env>/questionnaires/``. This
 module enumerates them and runs the static 3-stage pipeline once per questionnaire
-(injecting the selection via runtime params), then runs the ``combine`` pipeline once.
+(injecting the selection via runtime params), then runs a catalog-backed combine step
+once: it unions the per-questionnaire microdata into the survey-level microdata file
+via a plain ``catalog.load`` / pure function / ``catalog.save``, rather than a
+dedicated one-node Kedro pipeline.
 
 A legacy env with a single questionnaire in ``globals.yml`` and no ``questionnaires/``
 folder is run once, unchanged, with no combine step.
@@ -12,8 +15,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional, Union
+from typing import Callable, Dict, Optional, Union
 
+import pandas as pd
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -82,6 +86,69 @@ def run_survey(
         _run(name, {"questionnaire": q, "qnr_subdir": f"{name}/"}, pipeline)
 
     if run_combine:
-        _run("combine", None, "combine")
+        label = "combine"
+        print(f"=== combine microdata --env {env} [{label}] ===", flush=True)
+        try:
+            combine_survey_microdata(env, root)
+            results[label] = "OK"
+        except Exception as exc:  # keep failure isolated, like the per-questionnaire runs
+            results[label] = f"FAILED ({type(exc).__name__}: {exc})"
+        print(f"--- {label}: {results[label]} ---", flush=True)
 
     return results
+
+
+def combine_microdata(partitions: Dict[str, Callable[[], pd.DataFrame]]) -> pd.DataFrame:
+    """Union the per-questionnaire microdata into one survey-level table.
+
+    ``partitions`` is a PartitionedDataset mapping of partition-key -> loader over
+    ``30_PROCESSED``. The top-level union file (partition key ``''``) is skipped so the
+    output can be rewritten in place idempotently; each ``'<qnr>/'`` partition is a
+    per-questionnaire ``microdata.parquet``. A partition that fails to load is logged and
+    skipped so one corrupt file does not sink the whole union.
+    """
+    frames = []
+    for key, load in sorted(partitions.items()):
+        if not key.strip("/"):
+            continue  # the survey-level union file itself — never fold it back in
+        try:
+            df = load()
+        except Exception as e:
+            logger.error(
+                "combine_microdata: failed to load partition %r. Skipping. Error: %s",
+                key.strip("/"), str(e),
+            )
+            continue
+        frames.append(df)
+        logger.info("combine_microdata: adding partition %r", key.strip("/"))
+
+    if not frames:
+        logger.warning(
+            "combine_microdata: no per-questionnaire microdata partitions found — "
+            "returning empty DataFrame."
+        )
+        return pd.DataFrame()
+
+    combined = pd.concat(frames, ignore_index=True)
+    logger.info("combine_microdata: unioned %d partitions -> %d rows", len(frames), len(combined))
+    return combined
+
+
+def combine_survey_microdata(env: str, project_root: Optional[PathLike] = None) -> None:
+    """Union the survey's per-<qnr> microdata into the survey-level microdata.parquet.
+
+    Loads the ``microdata_by_qnr`` PartitionedDataset and saves ``microdata_combined``
+    through the Kedro catalog, so it works for local and ``s3://`` output roots alike.
+    Runs standalone (used after the per-questionnaire loop, or on its own to rebuild the
+    union).
+    """
+    from kedro.framework.session import KedroSession
+    from kedro.framework.startup import bootstrap_project
+
+    root = _project_root(project_root)
+    bootstrap_project(root)
+    with KedroSession.create(project_path=root, env=env) as session:
+        catalog = session.load_context().catalog
+        partitions = catalog.load("microdata_by_qnr")
+        combined = combine_microdata(partitions)
+        catalog.save("microdata_combined", combined)
