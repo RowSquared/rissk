@@ -254,8 +254,20 @@ Expected: PASS (all 4).
 
 - [ ] **Step 6: Sanity-check an existing env still resolves flat**
 
-Run: `.venv/bin/python -m kedro catalog resolve --env grdslchbs_test 2>/dev/null | grep -E "30_PROCESSED/microdata|35_SCORES/item_scores"`
-Expected: paths with **no** extra subfolder (e.g. `.../30_PROCESSED/microdata.parquet`), confirming backward compatibility.
+Note: there is no `kedro catalog resolve` subcommand in Kedro 1.2.0 (only
+`describe-datasets` / `list-patterns` / `resolve-patterns`). Resolve the catalog directly:
+
+```bash
+.venv/bin/python - <<'PY'
+from kedro.config import OmegaConfigLoader
+cl = OmegaConfigLoader(conf_source="conf", base_env="base",
+                       default_run_env="grdslchbs_test", runtime_params={})
+for ds in ("microdata", "item_scores", "item_features_base"):
+    print(ds, "->", cl["catalog"][ds]["filepath"])
+PY
+```
+Expected: paths with **no** extra subfolder (e.g. `.../30_PROCESSED/microdata.parquet`,
+`.../35_SCORES/item_scores.parquet`), confirming backward compatibility.
 
 - [ ] **Step 7: Commit**
 
