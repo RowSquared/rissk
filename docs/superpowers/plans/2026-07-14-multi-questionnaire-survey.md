@@ -597,35 +597,55 @@ git commit -m "feat: run_survey driver iterates a survey's questionnaires + comb
 
 ### Task 5: Example `pmpmd` env + end-to-end verification
 
-Proves the whole chain on real data (the zips already staged under `data/pmpmd copy/latest/10_RAW/`). Uses `VERSION: []` (= all versions found) so no version list needs to be hand-entered.
+Proves the whole chain on real data using the **existing** `data/pmpmd copy/` folder (26M), kept exactly as-is — space and all.
+
+> **DO NOT touch `data/pmpmd/`.** It already holds 308M of unrelated data in a different
+> layout (`00_EXTERNAL/`, `00_AUDIO/`, top-level `20_INTERIM`/`30_PROCESSED`,
+> `instrument_master.parquet`, `pmpmd_17census_1_*`) belonging to another project. Never
+> copy into, write to, or delete it.
+
+The survey name is therefore the literal string `pmpmd copy`. This is safe: `stage_zips`
+runs `glob.escape(name)` on the questionnaire name and the survey segment is a plain path
+component, so the space needs no special handling in Python/fsspec — only shell commands
+need quoting.
+
+`VERSION: []` (= all versions found) covers both questionnaires (community has 2,3,4,5;
+household has 4,5,6) with no hand-entered version list.
+
+Note: unlike `grdslchbs_test`, this export **includes Paradata** zips
+(`pmpmd_community_2_Paradata_All.zip`, …), so scores will be genuinely non-empty — this is
+the first real end-to-end proof of the feature.
 
 **Files:**
 - Create: `conf/pmpmd/globals.yml`, `conf/pmpmd/questionnaires/community.yml`, `conf/pmpmd/questionnaires/household.yml`
+- Delete: `data/pmpmd_community/` (empty 0B leftover), `conf/pmpmd copy/` (untracked, superseded)
 
 **Interfaces:**
 - Consumes: `run_survey` (Task 4), the `combine` pipeline (Task 3), catalog wiring (Task 2).
 
-- [ ] **Step 1: Point the survey folder at the existing data**
-
-The staged zips currently live under `data/pmpmd copy/` (a folder with a space). Use `survey: pmpmd` and copy/rename the data folder so the input path resolves:
+- [ ] **Step 1: Remove the superseded leftovers and confirm the input zips**
 
 ```bash
-cp -R "data/pmpmd copy" data/pmpmd    # or: mv, if you no longer need the "pmpmd copy" folder
-ls data/pmpmd/latest/10_RAW/*.zip
+rm -rf data/pmpmd_community            # empty 0B scaffold from the earlier approach
+rm -rf "conf/pmpmd copy"               # untracked globals.yml superseded by conf/pmpmd/
+ls "data/pmpmd copy/latest/10_RAW/"*.zip | xargs -n1 basename
 ```
-Expected: lists `pmpmd_community_*.zip` and `pmpmd_household_*.zip`.
+Expected: lists `pmpmd_community_{2,3,4,5}_{Tabular,Paradata}_All.zip` and
+`pmpmd_household_{4,5,6}_{Tabular,Paradata}_All.zip`. `data/pmpmd/` must remain untouched.
 
 - [ ] **Step 2: Create `conf/pmpmd/globals.yml`**
 
 ```yaml
 # Multi-questionnaire survey env — run via rissk.run.run_survey("pmpmd").
-# One survey folder (data/pmpmd) holds both questionnaires' zips in a shared 10_RAW.
-# The active questionnaire is injected per-run by the driver (runtime params), so no
-# single `questionnaire:` block here.
+# One survey folder ("data/pmpmd copy") holds both questionnaires' zips in a shared 10_RAW.
+# The active questionnaire is injected per-run by the driver (runtime params), so there is
+# no single `questionnaire:` block here (the conf/base defaults are overridden at runtime).
+# NOTE: the survey name contains a space and must stay quoted. Do NOT use "pmpmd" —
+# data/pmpmd belongs to an unrelated project.
 input_root: "data"
 output_root: "data"
 work_root: "data"
-survey: pmpmd
+survey: "pmpmd copy"
 ```
 
 - [ ] **Step 3: Create `conf/pmpmd/questionnaires/community.yml`**
@@ -654,32 +674,45 @@ Expected: prints per-questionnaire `OK` for `pmpmd_community` and `pmpmd_househo
 - [ ] **Step 6: Verify the output layout**
 
 ```bash
-find data/pmpmd/latest/30_PROCESSED -name "microdata.parquet"
+find "data/pmpmd copy/latest/30_PROCESSED" -name "microdata.parquet"
 ```
 Expected exactly three:
+```text
+data/pmpmd copy/latest/30_PROCESSED/pmpmd_community/microdata.parquet
+data/pmpmd copy/latest/30_PROCESSED/pmpmd_household/microdata.parquet
+data/pmpmd copy/latest/30_PROCESSED/microdata.parquet          <- the union
 ```
-data/pmpmd/latest/30_PROCESSED/pmpmd_community/microdata.parquet
-data/pmpmd/latest/30_PROCESSED/pmpmd_household/microdata.parquet
-data/pmpmd/latest/30_PROCESSED/microdata.parquet          <- the union
-```
-And per-`<qnr>` scores exist:
+And per-`<qnr>` scores exist and are NON-empty (this export has Paradata):
 ```bash
-ls data/pmpmd/latest/35_SCORES/pmpmd_community data/pmpmd/latest/35_SCORES/pmpmd_household
+ls "data/pmpmd copy/latest/35_SCORES/pmpmd_community" "data/pmpmd copy/latest/35_SCORES/pmpmd_household"
+wc -l "data/pmpmd copy/latest/35_SCORES/pmpmd_community/unit_rissk_scores.csv"
 ```
+Expected: `unit_rissk_scores.csv` has more than 1 line (header + real scored interviews).
 
 - [ ] **Step 7: Verify the union = sum of parts and is idempotent**
 
 ```bash
 .venv/bin/python - <<'PY'
-import pandas as pd, pyarrow.parquet as pq
-base = "data/pmpmd/latest/30_PROCESSED"
+import pyarrow.parquet as pq
+base = "data/pmpmd copy/latest/30_PROCESSED"
 c = pq.read_metadata(f"{base}/pmpmd_community/microdata.parquet").num_rows
 h = pq.read_metadata(f"{base}/pmpmd_household/microdata.parquet").num_rows
 u = pq.read_metadata(f"{base}/microdata.parquet").num_rows
 print("community", c, "household", h, "union", u, "-> OK" if u == c + h else "-> MISMATCH")
 PY
-# Re-run combine only; union row count must NOT change (idempotency).
-.venv/bin/python -c "from rissk.run import run_survey; run_survey('pmpmd', pipeline='combine')" >/dev/null 2>&1 || true
+# Idempotency: re-run ONLY the combine pipeline (no runtime params -> qnr_subdir defaults
+# to ''), then re-check the union row count. This also proves `combine` works standalone
+# from the CLI. Do NOT use run_survey(pipeline='combine') here — that would run combine
+# once per questionnaire with qnr_subdir set, which is not the check we want.
+.venv/bin/python -m kedro run --env pmpmd --pipeline combine
+.venv/bin/python - <<'PY'
+import pyarrow.parquet as pq
+base = "data/pmpmd copy/latest/30_PROCESSED"
+c = pq.read_metadata(f"{base}/pmpmd_community/microdata.parquet").num_rows
+h = pq.read_metadata(f"{base}/pmpmd_household/microdata.parquet").num_rows
+u = pq.read_metadata(f"{base}/microdata.parquet").num_rows
+print("after re-combine: union", u, "-> IDEMPOTENT" if u == c + h else "-> DOUBLED (bug)")
+PY
 ```
 Expected: `union == community + household` (top-level union file was skipped, not double-counted).
 
