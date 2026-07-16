@@ -66,10 +66,12 @@ def run_survey(
     qnrs = load_questionnaire_configs(env, root)
     results: dict[str, str] = {}
 
-    def _run(label: str, extra_params: Optional[dict], pipe: str) -> None:
+    def _run(label: str, runtime_params: Optional[dict], pipe: str) -> None:
         print(f"=== run --env {env} --pipeline {pipe} [{label}] ===", flush=True)
         try:
-            with KedroSession.create(project_path=root, env=env, extra_params=extra_params) as session:
+            # Kedro 1.x names this `runtime_params` (feeds both params:* and the
+            # ${runtime_params:...} catalog resolver); it was `extra_params` pre-0.19.
+            with KedroSession.create(project_path=root, env=env, runtime_params=runtime_params) as session:
                 session.run(pipeline_names=[pipe])
             results[label] = "OK"
         except Exception as exc:  # isolate failures across questionnaires
