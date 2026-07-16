@@ -27,3 +27,18 @@ def test_empty_partitions_returns_empty_frame():
 def test_only_top_level_union_returns_empty_frame():
     out = combine_microdata_node({"": _loader(pd.DataFrame({"qnr": ["OLD"]}))})
     assert out.empty
+
+
+def _raising_loader():
+    raise OSError("corrupt parquet")
+
+
+def test_skips_unreadable_partition_and_unions_the_rest():
+    partitions = {
+        "community/": _loader(pd.DataFrame({"qnr": ["community"], "value": [1]})),
+        "corrupt/": _raising_loader,
+        "household/": _loader(pd.DataFrame({"qnr": ["household"], "value": [2]})),
+    }
+    out = combine_microdata_node(partitions)
+    assert sorted(out["qnr"].unique()) == ["community", "household"]
+    assert len(out) == 2

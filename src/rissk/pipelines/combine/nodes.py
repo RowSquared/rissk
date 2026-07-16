@@ -19,7 +19,15 @@ def combine_microdata_node(partitions: Dict[str, Callable[[], pd.DataFrame]]) ->
     for key, load in sorted(partitions.items()):
         if not key.strip("/"):
             continue  # the survey-level union file itself — never fold it back in
-        frames.append(load())
+        try:
+            df = load()
+        except Exception as e:
+            logger.error(
+                "combine_microdata: failed to load partition %r. Skipping. Error: %s",
+                key.strip("/"), str(e)
+            )
+            continue
+        frames.append(df)
         logger.info("combine_microdata: adding partition %r", key.strip("/"))
 
     if not frames:
