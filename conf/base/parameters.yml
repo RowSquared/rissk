@@ -1,5 +1,5 @@
 # Configuration — defined in globals.yml (overridden per env). Exposed to nodes here.
-questionnaire: ${globals:questionnaire}
+questionnaire: ${runtime_params:questionnaire,${globals:questionnaire,null}}
 input_root: ${globals:input_root}
 work_root: ${globals:work_root}
 survey: ${globals:survey}

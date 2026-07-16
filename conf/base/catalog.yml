@@ -22,57 +22,57 @@ extracted_survey_folders:
 # === INGESTED DataFrames ===
 paradata_raw:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/20_INTERIM/paradata_raw.parquet
+  filepath: ${globals:output_root}/${globals:survey}/latest/20_INTERIM/${runtime_params:qnr_subdir,''}paradata_raw.parquet
 
 raw_questionnaire:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/questionnaire.parquet
+  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/${runtime_params:qnr_subdir,''}questionnaire.parquet
 
 raw_microdata:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/20_INTERIM/microdata_raw.parquet
+  filepath: ${globals:output_root}/${globals:survey}/latest/20_INTERIM/${runtime_params:qnr_subdir,''}microdata_raw.parquet
 
 microdata:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/microdata.parquet
+  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/${runtime_params:qnr_subdir,''}microdata.parquet
 
 paradata_processed:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/paradata_processed.parquet
+  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/${runtime_params:qnr_subdir,''}paradata_processed.parquet
 
 
 # === FEATURE CREATION DataFrames ===
 item_features_base:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/20_INTERIM/item_features_base.parquet
+  filepath: ${globals:output_root}/${globals:survey}/latest/20_INTERIM/${runtime_params:qnr_subdir,''}item_features_base.parquet
 
 unit_features_base:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/20_INTERIM/unit_features_base.parquet
+  filepath: ${globals:output_root}/${globals:survey}/latest/20_INTERIM/${runtime_params:qnr_subdir,''}unit_features_base.parquet
 
 item_features:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/item_features.parquet
+  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/${runtime_params:qnr_subdir,''}item_features.parquet
 
 unit_features:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/unit_features.parquet
+  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/${runtime_params:qnr_subdir,''}unit_features.parquet
 
 # Aggregated AnswerRemoved events (used by rissk_scoring for unit-level s__answer_removed).
 removed_answers:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/removed_answers.parquet
+  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/${runtime_params:qnr_subdir,''}removed_answers.parquet
 
 
 # === SCORING DataFrames ===
 item_scores:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/35_SCORES/item_scores.parquet
+  filepath: ${globals:output_root}/${globals:survey}/latest/35_SCORES/${runtime_params:qnr_subdir,''}item_scores.parquet
 
 unit_rissk_scores:
   type: pandas.CSVDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/35_SCORES/unit_rissk_scores.csv
+  filepath: ${globals:output_root}/${globals:survey}/latest/35_SCORES/${runtime_params:qnr_subdir,''}unit_rissk_scores.csv
 
 responsible_scores:
   type: pandas.CSVDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/35_SCORES/responsible_scores.csv
+  filepath: ${globals:output_root}/${globals:survey}/latest/35_SCORES/${runtime_params:qnr_subdir,''}responsible_scores.csv
