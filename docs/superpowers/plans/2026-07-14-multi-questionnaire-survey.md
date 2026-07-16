@@ -100,9 +100,14 @@ responsible_scores:
 
 Run: `.venv/bin/python -m pytest tests/test_viz.py -q`
 Expected: PASS.
-Also confirm no stray references remain (ignore `.claude/worktrees` and the specs doc):
-Run: `grep -rn "41_SCORES" --include="*.py" --include="*.yml" --include="*.md" . | grep -v ".claude/worktrees" | grep -v "docs/superpowers/specs"`
+Also confirm no stray references remain in **active** code/config/docs. Three sources
+legitimately still contain the literal `41_SCORES` and must be excluded: `.claude/worktrees`
+(stale worktrees), `docs/superpowers/specs/` and `docs/superpowers/plans/` (these documents
+quote the pre-rename state, including this very step):
+Run: `grep -rn "41_SCORES" --include="*.py" --include="*.yml" --include="*.md" . | grep -v ".claude/worktrees" | grep -v "docs/superpowers/specs" | grep -v "docs/superpowers/plans"`
 Expected: no output.
+Note: `rissk_readme.ipynb` still contains `41_SCORES` at this point — that is **Task 6's**
+job, not a Task 1 defect.
 
 - [ ] **Step 7: Commit**
 
