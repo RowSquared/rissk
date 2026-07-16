@@ -715,3 +715,28 @@ These features are calculated but not scored. They remain in `parameters.yml` (s
 
 ---
 
+## 10. Multi-Questionnaire Surveys & `35_SCORES` Rename
+
+Added 2026-07-14. Lets one survey hold several questionnaire **names** (not just versions), each scored independently, plus a combined microdata union — without dynamic pipeline generation.
+
+### Scores output folder renamed `41_SCORES` → `35_SCORES`
+- Pure rename of the final-scores folder (previously renamed `40_SCORED` → `41_SCORES`). Applied across `conf/base/catalog.yml`, `src/rissk/viz.py`, docs, and the notebook. No behavioural change.
+
+### Per-`<qnr>` output sub-level (opt-in, backward-compatible)
+- The 13 output catalog entries under `20_INTERIM` / `30_PROCESSED` / `35_SCORES` gained a `${runtime_params:qnr_subdir,''}` path segment. With no runtime param the segment resolves to `''`, so **existing single-questionnaire envs keep the exact flat layout** (`<survey>/latest/<stage>/<file>`) — verified byte-for-byte.
+- When the driver passes `qnr_subdir="<name>/"`, each questionnaire's outputs land under `<survey>/latest/<stage>/<name>/`.
+- `10_RAW` is **not** subfoldered — it stays survey-level/shared; staging already isolates questionnaires by the `<name>_*.zip` glob.
+- `parameters.yml` `questionnaire` is now `${runtime_params:questionnaire,${globals:questionnaire,null}}`. Note: Kedro's `OmegaConfigLoader` merges `runtime_params` over `parameters` directly, so a runtime `questionnaire` override wins via that merge (not the resolver); the expression's genuine effect is the `null` fallback that lets a multi-questionnaire env's `globals.yml` omit `questionnaire`.
+
+### Driver: `rissk.run.run_survey`
+- New in-process orchestrator. For an env with a `conf/<env>/questionnaires/*.yml` folder it runs the full pipeline once per questionnaire (injecting `questionnaire` + `qnr_subdir` as Kedro **`runtime_params`** — the Kedro-1.x name; `extra_params` was the pre-0.19 spelling), isolating per-questionnaire failures. An env with no such folder (questionnaire in `globals.yml`) runs once, unchanged, with no combine.
+- Static DAG preserved — multi-questionnaire handling is re-running the fixed pipeline per questionnaire, never programmatic node generation.
+
+### Combined microdata (union) — a catalog load/save, not a pipeline
+- After the per-questionnaire loop the driver calls `combine_survey_microdata(env)`, which loads the `microdata_by_qnr` PartitionedDataset (each `<qnr>/microdata.parquet`) and saves the survey-level `microdata_combined` (`30_PROCESSED/microdata.parquet`) — using the Kedro catalog for I/O, so `s3://` output roots work via `fsspec`.
+- The top-level union file surfaces as PartitionedDataset key `''` and is skipped, so re-running combine is idempotent (no row doubling). A corrupt/unreadable per-questionnaire partition is logged and skipped, not fatal.
+- Union is **microdata only** and feeds nothing downstream — scoring is unaffected (pooling different questionnaires into one anomaly model would be statistically wrong).
+
+### Validation
+- End-to-end on the `pmpmd` env (survey `pmpmd copy`, two questionnaires `pmpmd_community` + `pmpmd_household`, Tabular+Paradata export): per-`<qnr>` outputs + union (2 819 + 268 731 = 271 550 rows, idempotent), non-empty scores (24 + 589 interviews). `grdslchbs_test` still produces the flat layout. The `rissk_readme.ipynb` notebook runs it green (`3/3 run(s) succeeded`).
+
