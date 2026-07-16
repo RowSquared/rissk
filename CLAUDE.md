@@ -68,7 +68,7 @@ Data flows **only** through the Kedro Data Catalog (`conf/base/catalog.yml`) —
 <output_root>/<survey>/latest/
     20_INTERIM/    # raw paradata/microdata, base feature tables
     30_PROCESSED/  # processed paradata/microdata, final feature tables
-    41_SCORES/     # item_scores.parquet, unit_rissk_scores.csv  ← final output
+    35_SCORES/     # item_scores.parquet, unit_rissk_scores.csv  ← final output
 ```
 
 `src/rissk/datasets/path.py` defines `PathDataset`, a custom dataset that returns a `Path` (used so the unzip node can operate on files/dirs directly rather than loading content).

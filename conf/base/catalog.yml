@@ -67,12 +67,12 @@ removed_answers:
 # === SCORING DataFrames ===
 item_scores:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/41_SCORES/item_scores.parquet
+  filepath: ${globals:output_root}/${globals:survey}/latest/35_SCORES/item_scores.parquet
 
 unit_rissk_scores:
   type: pandas.CSVDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/41_SCORES/unit_rissk_scores.csv
+  filepath: ${globals:output_root}/${globals:survey}/latest/35_SCORES/unit_rissk_scores.csv
 
 responsible_scores:
   type: pandas.CSVDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/41_SCORES/responsible_scores.csv
+  filepath: ${globals:output_root}/${globals:survey}/latest/35_SCORES/responsible_scores.csv
