@@ -1,4 +1,8 @@
 # Configuration — defined in globals.yml (overridden per env). Exposed to nodes here.
+# questionnaire: Kedro's OmegaConfigLoader merges runtime_params over parameters before
+# interpolation resolution, so a runtime override always wins (the resolver is not invoked for it).
+# The explicit resolver chain documents intent (runtime → globals); the null default allows envs
+# with no single questionnaire (multi-questionnaire runs inject it per invocation).
 questionnaire: ${runtime_params:questionnaire,${globals:questionnaire,null}}
 input_root: ${globals:input_root}
 work_root: ${globals:work_root}
