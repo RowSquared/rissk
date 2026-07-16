@@ -76,3 +76,18 @@ unit_rissk_scores:
 responsible_scores:
   type: pandas.CSVDataset
   filepath: ${globals:output_root}/${globals:survey}/latest/35_SCORES/${runtime_params:qnr_subdir,''}responsible_scores.csv
+
+
+# === COMBINE (survey-level union of per-<qnr> microdata) ===
+# Scans 30_PROCESSED for every <qnr>/microdata.parquet. The top-level union file
+# (microdata.parquet) is also matched (partition key '') and skipped by the node.
+microdata_by_qnr:
+  type: partitions.PartitionedDataset
+  path: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED
+  dataset:
+    type: pandas.ParquetDataset
+  filename_suffix: microdata.parquet
+
+microdata_combined:
+  type: pandas.ParquetDataset
+  filepath: ${globals:output_root}/${globals:survey}/latest/30_PROCESSED/microdata.parquet
