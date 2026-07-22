@@ -167,6 +167,10 @@ def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd
     # median/distance computations so they don't skew the central location.
     mask = data['s__gps_extreme_outlier'] < 1
     data['distance_to_median'] = np.nan
+    # Default to NaN ("no evaluation possible"); overwritten below only when the spatial
+    # model can actually be fit. Guarantees the column exists for the score merge even when
+    # fitting is skipped (single-point case) or the else-branch runs.
+    data['s__gps_outlier'] = np.nan
     if mask.sum() > 0:
         median_x = data.loc[mask].drop_duplicates(subset='x')['x'].median()
         median_y = data.loc[mask].drop_duplicates(subset='y')['y'].median()
@@ -200,13 +204,20 @@ def calculate_gps_score(df_item: pd.DataFrame, parameters: Dict[str, Any]) -> pd
         # switching to ['x','y','z'] or a geodesic distance measure.
         coords_columns = ['x', 'y']
 
-        # USE COF if dataset has less than 10000 samples else use LOF
-        if data.loc[mask].shape[0] < 10000:
-            model = COF(contamination=contamination)
-        else:
-            model = LOF(contamination=contamination, n_neighbors=20)
-        model.fit(data.loc[mask, coords_columns])
-        data.loc[mask, 's__gps_outlier'] = model.predict(data.loc[mask, coords_columns])
+        # COF/LOF are neighbour-based (need n_neighbors >= 1, i.e. at least 2 points).
+        # With a single valid GPS point pyod computes n_neighbors_ = 0 and raises
+        # (ValueError: ... not in the range of [1, 1]) — a real crash seen for a
+        # questionnaire with only one GPS interview (e.g. srb_roma_wb6_26). Skip fitting
+        # in that case and leave s__gps_outlier as NaN, like the all-extreme-outlier branch.
+        n_valid = data.loc[mask].shape[0]
+        if n_valid >= 2:
+            # USE COF if dataset has less than 10000 samples else use LOF
+            if n_valid < 10000:
+                model = COF(contamination=contamination)
+            else:
+                model = LOF(contamination=contamination, n_neighbors=20)
+            model.fit(data.loc[mask, coords_columns])
+            data.loc[mask, 's__gps_outlier'] = model.predict(data.loc[mask, coords_columns])
         # Extreme outlier rows excluded from model fitting keep NaN for s__gps_outlier —
         # they are already classified as extreme outliers and the spatial model cannot
         # evaluate them; NaN signals that no evaluation was possible for those points.

@@ -339,6 +339,11 @@ Each legacy `make_score__*` method is now a standalone function in `item_process
 - **Legacy:** When all GPS points are extreme outliers, the COF/LOF model may throw an exception or produce unpredictable results.
 - **Kedro:** Sets score to `NaN` (evaluation not possible) — handled cleanly.
 
+#### GPS — single valid point (too few to fit) edge case
+- **Kedro (before fix):** `calculate_gps_score` fit the COF/LOF spatial-outlier model whenever `mask.sum() > 0` (at least one non-extreme GPS point). COF/LOF are neighbour-based and need **≥ 2** points; with **exactly one** valid GPS point pyod computes `n_neighbors_ = 0` and raises `ValueError: … is set to 0. Not in the range of [1, 1]`, aborting that questionnaire's entire run. Observed on a small questionnaire (`srb_roma_wb6_26`) that had a single GPS interview.
+- **Kedro (fixed):** The model is fit only when there are **≥ 2** valid points. With 0 or 1, `s__gps_outlier` is left `NaN` ("no evaluation possible"), matching the all-extreme-outlier branch above. `s__gps_outlier` is now initialised to `NaN` up-front so the score column always exists for the downstream merge even when fitting is skipped.
+- **Impact:** Questionnaires with ≥ 2 valid GPS points are unaffected (identical scores). A questionnaire with a single GPS point now completes with `s__gps_outlier = NaN` for those rows instead of crashing. Relevant for multi-questionnaire surveys where one small questionnaire would otherwise fail the whole run.
+
 #### Entropy normalization fix
 - **Legacy:** `calculate_entropy` divides by `np.log2(unique_values)`.
 - **Kedro:** Divides by `np.log(unique_values)` (natural log). Raw entropy values in Kedro are correctly normalized to [0, 1]; legacy values are in [0, ln(2)] ≈ [0, 0.693]. Since entropy is only used in a relative median comparison (`x < median − 0.5 × median`), the ln(2) factor cancels and no responsibles are flagged differently. Raw entropy values differ.
