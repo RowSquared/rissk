@@ -44,6 +44,13 @@ def stage_zips(input_root: str, survey: str, name: str, work_root: str) -> list[
     dest.mkdir(parents=True, exist_ok=True)
 
     fs, src_path = fsspec.core.url_to_fs(src)
+    # Drop any cached directory listing before globbing. run_survey stages every
+    # questionnaire in ONE process reusing a cached fsspec filesystem; for s3://, s3fs
+    # caches listings, and the listing cached by the FIRST questionnaire's glob shadows
+    # later questionnaires — so their glob returns nothing, only the first questionnaire is
+    # ever staged, and the rest silently produce empty output. Local filesystems have no
+    # such cache, hence this only bites s3://. Invalidating forces a fresh listing per call.
+    fs.invalidate_cache(src_path)
     # Escape glob metacharacters in the name so a name containing [, ], ?, * matches
     # literally — only the trailing _*.zip is a wildcard.
     zips = fs.glob(f"{src_path}/{glob.escape(name)}_*.zip")
