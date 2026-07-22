@@ -278,3 +278,4 @@ rissk/utils/testing_utils.py
 
 # marimo layout/cache artifacts
 __marimo__/
+.vscode/settings.json

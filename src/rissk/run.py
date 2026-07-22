@@ -14,6 +14,7 @@ folder is run once, unchanged, with no combine step.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Callable, Dict, Optional, Union
 
@@ -63,6 +64,12 @@ def run_survey(
 
     root = _project_root(project_root)
     bootstrap_project(root)
+    # Anchor the CWD to the project root. Kedro resolves relative dataset paths against
+    # the project root, but stage_zips stages relative to the CWD; when a caller runs from
+    # elsewhere (e.g. a JupyterHub Notebook Job executes a COPY of the notebook from
+    # /jobs/<id>/) the two diverge and ingestion fails with "No partitions found". This
+    # keeps every run_survey caller correct regardless of the launch directory.
+    os.chdir(root)
     qnrs = load_questionnaire_configs(env, root)
     results: dict[str, str] = {}
 

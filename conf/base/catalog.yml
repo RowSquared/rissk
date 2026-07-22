@@ -1,7 +1,12 @@
 # Data catalog. Paths come from globals (conf/base + the selected env):
-#   ${globals:work_root}   — LOCAL staging for 10_RAW (zips fetched + extracted here).
-#   ${globals:output_root} — outputs 20→40 (local or s3://).
+#   ${globals:work_root}   — LOCAL: 10_RAW staging (zips fetched + extracted) AND the
+#                            20_INTERIM intermediates (scratch; each produced-and-consumed
+#                            within one pipeline, so never needs to be on output_root/s3).
+#   ${globals:output_root} — deliverable outputs 30_PROCESSED + 35_SCORES (local or s3://).
 #   keyed by  <survey>.
+#
+# Note: 20_INTERIM lives under work_root (always local), NOT output_root. For local-output
+# envs this is the same place; for s3 output_root it keeps the intermediates off S3.
 #
 # === RAW DATA (local staging — unzip + folder reads are local-filesystem only) ===
 # Zips staged by stage_input_zips_node from <input_root>/<survey>/latest/10_RAW/<name>_*.zip
@@ -22,7 +27,7 @@ extracted_survey_folders:
 # === INGESTED DataFrames ===
 paradata_raw:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/20_INTERIM/${runtime_params:qnr_subdir,''}paradata_raw.parquet
+  filepath: ${globals:work_root}/${globals:survey}/latest/20_INTERIM/${runtime_params:qnr_subdir,''}paradata_raw.parquet
 
 raw_questionnaire:
   type: pandas.ParquetDataset
@@ -30,7 +35,7 @@ raw_questionnaire:
 
 raw_microdata:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/20_INTERIM/${runtime_params:qnr_subdir,''}microdata_raw.parquet
+  filepath: ${globals:work_root}/${globals:survey}/latest/20_INTERIM/${runtime_params:qnr_subdir,''}microdata_raw.parquet
 
 microdata:
   type: pandas.ParquetDataset
@@ -44,11 +49,11 @@ paradata_processed:
 # === FEATURE CREATION DataFrames ===
 item_features_base:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/20_INTERIM/${runtime_params:qnr_subdir,''}item_features_base.parquet
+  filepath: ${globals:work_root}/${globals:survey}/latest/20_INTERIM/${runtime_params:qnr_subdir,''}item_features_base.parquet
 
 unit_features_base:
   type: pandas.ParquetDataset
-  filepath: ${globals:output_root}/${globals:survey}/latest/20_INTERIM/${runtime_params:qnr_subdir,''}unit_features_base.parquet
+  filepath: ${globals:work_root}/${globals:survey}/latest/20_INTERIM/${runtime_params:qnr_subdir,''}unit_features_base.parquet
 
 item_features:
   type: pandas.ParquetDataset
